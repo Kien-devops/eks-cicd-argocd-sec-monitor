@@ -25,6 +25,8 @@ env:
   BE_MANIFEST: k8s/base/07-be-deployment.yaml
   TERRAFORM_DIR: terraform/environments/dev
   NEXUS_RAW_REPOSITORY: hospital-artifacts
+  NEXUS_NUGET_REPOSITORY: nuget-group
+  NEXUS_NPM_REPOSITORY: npm-group
   BACKEND_ARTIFACT: backend-${{ github.sha }}.zip
   FRONTEND_ARTIFACT: frontend-${{ github.sha }}.zip
 
@@ -74,7 +76,72 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Trivy filesystem scan
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: hospital_FE/package-lock.json
+
+      - name: Configure Nexus dependency cache
+        shell: bash
+        env:
+          NEXUS_URL: ${{ secrets.NEXUS_URL }}
+          NEXUS_USERNAME: ${{ secrets.NEXUS_USERNAME }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          for value in NEXUS_URL NEXUS_USERNAME NEXUS_PASSWORD; do
+            if [ -z "${!value:-}" ]; then
+              echo "$value is required to restore dependencies through Nexus."
+              exit 1
+            fi
+          done
+          NEXUS_URL="${NEXUS_URL%/}"
+
+          dotnet nuget remove source nuget.org || true
+          dotnet nuget add source "${NEXUS_URL}/repository/${NEXUS_NUGET_REPOSITORY}/index.json" \
+            --name nexus-nuget \
+            --username "$NEXUS_USERNAME" \
+            --password "$NEXUS_PASSWORD" \
+            --store-password-in-clear-text
+
+          NPM_REGISTRY="${NEXUS_URL}/repository/${NEXUS_NPM_REPOSITORY}/"
+          NPM_AUTH=$(printf '%s' "${NEXUS_USERNAME}:${NEXUS_PASSWORD}" | base64 | tr -d '\n')
+          NPM_HOST_PATH="${NPM_REGISTRY#http://}"
+          NPM_HOST_PATH="${NPM_HOST_PATH#https://}"
+
+          {
+            echo "registry=${NPM_REGISTRY}"
+            echo "//${NPM_HOST_PATH}:_auth=${NPM_AUTH}"
+            echo "always-auth=true"
+          } > "${FRONTEND_DIR}/.npmrc"
+
+      - name: Restore backend dependencies through Nexus
+        run: dotnet restore "${{ env.BACKEND_PROJECT }}"
+
+      - name: Install frontend dependencies through Nexus
+        working-directory: ${{ env.FRONTEND_DIR }}
+        run: npm ci
+
+      - name: Build backend
+        run: dotnet build "${{ env.BACKEND_PROJECT }}" --configuration Release --no-restore
+
+      - name: Lint frontend
+        working-directory: ${{ env.FRONTEND_DIR }}
+        run: npm run lint
+
+      - name: Build frontend
+        working-directory: ${{ env.FRONTEND_DIR }}
+        run: npm run build
+
+      - name: Trivy filesystem and dependency scan
         uses: aquasecurity/trivy-action@0.24.0
         with:
           scan-type: fs
@@ -91,15 +158,7 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "1"
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ env.DOTNET_VERSION }}
-
-      - name: Restore backend
-        run: dotnet restore "${{ env.BACKEND_PROJECT }}"
-
-      - name: SonarQube analysis
+      - name: SonarQube code quality scan
         shell: bash
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -109,7 +168,6 @@ jobs:
 
           if [ -z "$SONAR_TOKEN" ] || [ -z "$SONAR_HOST_URL" ]; then
             echo "SonarQube secrets are not configured. Skipping analysis."
-            dotnet build "${{ env.BACKEND_PROJECT }}" --configuration Release --no-restore
             exit 0
           fi
 
@@ -124,25 +182,6 @@ jobs:
           dotnet build "${{ env.BACKEND_PROJECT }}" --configuration Release --no-restore
 
           dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: hospital_FE/package-lock.json
-
-      - name: Install frontend dependencies
-        working-directory: ${{ env.FRONTEND_DIR }}
-        run: npm ci
-
-      - name: Lint frontend
-        working-directory: ${{ env.FRONTEND_DIR }}
-        run: npm run lint
-
-      - name: Build frontend
-        working-directory: ${{ env.FRONTEND_DIR }}
-        run: npm run build
 
       - name: Package backend artifact
         shell: bash
@@ -176,6 +215,7 @@ jobs:
               exit 1
             fi
           done
+          NEXUS_URL="${NEXUS_URL%/}"
 
           curl -fsS -u "${NEXUS_USERNAME}:${NEXUS_PASSWORD}" \
             --upload-file "artifacts/${BACKEND_ARTIFACT}" \
@@ -209,6 +249,7 @@ jobs:
               exit 1
             fi
           done
+          NEXUS_URL="${NEXUS_URL%/}"
 
           curl -fsS -u "${NEXUS_USERNAME}:${NEXUS_PASSWORD}" "$NEXUS_URL/service/rest/v1/status" >/dev/null
 
@@ -233,6 +274,7 @@ jobs:
         run: |
           set -euo pipefail
 
+          NEXUS_URL="${NEXUS_URL%/}"
           GIT_AUTH=$(printf '%s' "${GIT_USERNAME}:${GIT_PASSWORD}" | base64 | tr -d '\n')
           NEXUS_AUTH=$(printf '%s' "${NEXUS_USERNAME}:${NEXUS_PASSWORD}" | base64 | tr -d '\n')
 

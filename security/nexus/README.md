@@ -112,6 +112,22 @@ hospital-artifacts/<branch>/frontend-<commit-sha>.zip
 
 Then the EC2 build step downloads those files from Nexus and builds Docker images from the extracted artifacts.
 
+The workflow also restores build dependencies through Nexus cache:
+
+```text
+dotnet restore -> nuget-group
+npm ci         -> npm-group
+```
+
+Create or confirm these repositories:
+
+```text
+nuget-proxy  -> proxy to https://api.nuget.org/v3/index.json
+nuget-group  -> group containing nuget-proxy and optional nuget-hosted
+npm-proxy    -> proxy to https://registry.npmjs.org
+npm-group    -> group containing npm-proxy and optional npm-hosted
+```
+
 ## NuGet Example
 
 Add source:

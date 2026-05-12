@@ -22,8 +22,10 @@ flowchart TB
   dev[Developer] --> push[Push to main/devops]
   push --> gha[GitHub Actions]
   gha --> iac[Terraform validate<br/>Kubernetes render]
-  iac --> trivy[Trivy filesystem<br/>Trivy IaC]
-  trivy --> sonar[SonarQube optional<br/>Build FE/BE]
+  iac --> restore[Restore dependencies<br/>through Nexus cache]
+  restore --> build[Build backend/frontend]
+  build --> trivy[Trivy filesystem<br/>Trivy IaC]
+  trivy --> sonar[SonarQube optional<br/>code quality]
   sonar --> nexus[Publish artifacts<br/>to Nexus raw repo]
   nexus --> ssh[SSH to EC2 build host]
   ssh --> ec2[EC2 Server]
@@ -55,9 +57,10 @@ sequenceDiagram
 
   Dev->>GH: push to main or devops
   GH->>GH: validate Terraform and render Kubernetes manifests
+  GH->>Nexus: restore NuGet and npm dependencies through cache
+  GH->>GH: build backend and frontend
   GH->>GH: run Trivy filesystem and IaC scans
   GH->>GH: run SonarQube when secrets exist
-  GH->>GH: build backend and frontend
   GH->>GH: package backend/frontend artifacts
   GH->>Nexus: upload artifacts to raw repository
   GH->>EC2: SSH with EC2 key after gates pass
@@ -109,6 +112,8 @@ These values are defined directly in `cicd.yml`.
 | `BE_MANIFEST` | `k8s/base/07-be-deployment.yaml` | Backend deployment manifest updated by CI. |
 | `TERRAFORM_DIR` | `terraform/environments/dev` | Terraform environment validated by CI. |
 | `NEXUS_RAW_REPOSITORY` | `hospital-artifacts` | Nexus raw hosted repository used for build artifacts. |
+| `NEXUS_NUGET_REPOSITORY` | `nuget-group` | Nexus NuGet group repository used for backend dependency restore. |
+| `NEXUS_NPM_REPOSITORY` | `npm-group` | Nexus npm group repository used for frontend dependency install. |
 | `BACKEND_ARTIFACT` | `backend-${{ github.sha }}.zip` | Backend publish artifact name. |
 | `FRONTEND_ARTIFACT` | `frontend-${{ github.sha }}.zip` | Frontend build artifact name. |
 
@@ -272,6 +277,13 @@ The final manifest commit uses GitHub Actions' built-in token, not `GIT_PASSWORD
 
 ## Build and Push Step
 
+Before building, the workflow restores dependencies through Nexus cache:
+
+```text
+dotnet restore -> Nexus nuget-group -> nuget.org proxy
+npm ci         -> Nexus npm-group   -> npmjs proxy
+```
+
 The EC2 step downloads the packaged artifacts from Nexus:
 
 ```text
@@ -375,6 +387,13 @@ For the Nexus artifact flow, also verify the raw repository exists:
 ```text
 Nexus > Repositories > Create repository > raw (hosted)
 Name: hospital-artifacts
+```
+
+For dependency cache, verify these Nexus repositories exist:
+
+```text
+NuGet group: nuget-group
+npm group:   npm-group
 ```
 
 Check manifests locally:
