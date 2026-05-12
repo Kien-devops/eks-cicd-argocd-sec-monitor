@@ -1,4 +1,4 @@
-name: Build and Push on EC2
+name: DevSecOps CI/CD
 
 on:
   push:
@@ -23,17 +23,70 @@ env:
   BRANCH_NAME: ${{ github.ref_name }}
   FE_MANIFEST: k8s/base/05-fe-deployment.yaml
   BE_MANIFEST: k8s/base/07-be-deployment.yaml
+  TERRAFORM_DIR: terraform/environments/dev
 
 jobs:
-  quality-and-security:
-    name: Quality and Security Gates
+  iac-terraform-check:
+    name: IaC Terraform and Kubernetes Check
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     if: "${{ github.event_name != 'push' || !contains(github.event.head_commit.message, 'ci: update image tag') }}"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform fmt
+        working-directory: ${{ env.TERRAFORM_DIR }}
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init
+        working-directory: ${{ env.TERRAFORM_DIR }}
+        run: terraform init -input=false
+
+      - name: Terraform validate
+        working-directory: ${{ env.TERRAFORM_DIR }}
+        run: terraform validate
+
+      - name: Setup kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Kubernetes manifest render
+        run: kubectl kustomize k8s/base
+
+  security-gates:
+    name: Trivy and SonarQube Gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs:
+      - iac-terraform-check
+    if: "${{ github.event_name != 'push' || !contains(github.event.head_commit.message, 'ci: update image tag') }}"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: false
+
+      - name: Trivy IaC scan
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
@@ -43,9 +96,6 @@ jobs:
       - name: Restore backend
         run: dotnet restore "${{ env.BACKEND_PROJECT }}"
 
-      - name: Build backend
-        run: dotnet build "${{ env.BACKEND_PROJECT }}" --configuration Release --no-restore
-
       - name: SonarQube analysis
         shell: bash
         env:
@@ -53,15 +103,23 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         run: |
           set -euo pipefail
+
           if [ -z "$SONAR_TOKEN" ] || [ -z "$SONAR_HOST_URL" ]; then
             echo "SonarQube secrets are not configured. Skipping analysis."
+            dotnet build "${{ env.BACKEND_PROJECT }}" --configuration Release --no-restore
             exit 0
           fi
 
           dotnet tool install --global dotnet-sonarscanner
           export PATH="$PATH:$HOME/.dotnet/tools"
-          dotnet sonarscanner begin /k:"eks-cicd-argocd-sec-monitor" /d:sonar.host.url="$SONAR_HOST_URL" /d:sonar.token="$SONAR_TOKEN"
-          dotnet build "${{ env.BACKEND_PROJECT }}" --configuration Release
+
+          dotnet sonarscanner begin \
+            /k:"eks-cicd-argocd-sec-monitor" \
+            /d:sonar.host.url="$SONAR_HOST_URL" \
+            /d:sonar.token="$SONAR_TOKEN"
+
+          dotnet build "${{ env.BACKEND_PROJECT }}" --configuration Release --no-restore
+
           dotnet sonarscanner end /d:sonar.token="$SONAR_TOKEN"
 
       - name: Setup Node
@@ -83,32 +141,29 @@ jobs:
         working-directory: ${{ env.FRONTEND_DIR }}
         run: npm run build
 
-      - name: Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.24.0
-        with:
-          scan-type: fs
-          scan-ref: .
-          severity: HIGH,CRITICAL
-          exit-code: "1"
-          ignore-unfixed: false
-
-      - name: Trivy IaC scan
-        uses: aquasecurity/trivy-action@0.24.0
-        with:
-          scan-type: config
-          scan-ref: .
-          severity: HIGH,CRITICAL
-          exit-code: "1"
-
-  build-and-push:
-    name: Build and Push Images
+  build-push-deploy:
+    name: Build, Push ECR, and Update GitOps
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     needs:
-      - quality-and-security
-    timeout-minutes: 20
+      - security-gates
     if: "${{ github.event_name != 'push' || !contains(github.event.head_commit.message, 'ci: update image tag') }}"
 
     steps:
+      - name: Nexus repository check
+        shell: bash
+        env:
+          NEXUS_URL: ${{ secrets.NEXUS_URL }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${NEXUS_URL:-}" ]; then
+            echo "NEXUS_URL is not configured. Skipping Nexus check."
+            exit 0
+          fi
+
+          curl -fsS "$NEXUS_URL/service/rest/v1/status" >/dev/null
+
       - name: Configure SSH key
         shell: bash
         run: |
@@ -150,6 +205,7 @@ jobs:
           fi
 
           cd "$REPO_DIR"
+
           aws ecr get-login-password --region "$AWS_REGION" | sudo docker login --username AWS --password-stdin "$REGISTRY"
 
           sudo docker build -t "ecr-fe:$IMAGE_TAG" -f hospital_FE/Dockerfile hospital_FE
@@ -165,7 +221,7 @@ jobs:
       - name: Checkout repo to update manifests
         uses: actions/checkout@v4
         with:
-          ref: devops
+          ref: ${{ env.BRANCH_NAME }}
 
       - name: Update image tag in k8s manifests
         shell: bash
@@ -188,4 +244,4 @@ jobs:
           fi
 
           git commit -m "ci: update image tag to ${IMAGE_TAG}"
-          git push origin devops
+          git push origin "$BRANCH_NAME"

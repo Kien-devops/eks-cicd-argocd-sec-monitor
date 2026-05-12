@@ -1,4 +1,4 @@
-# GitHub Actions EC2 Build and ECR Push
+# GitHub Actions DevSecOps CI/CD
 
 ![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-CI%2FCD-2088FF?logo=githubactions&logoColor=white)
 ![Amazon EC2](https://img.shields.io/badge/Amazon%20EC2-Build%20Host-FF9900?logo=amazonec2&logoColor=white)
@@ -7,7 +7,7 @@
 ![Kubernetes](https://img.shields.io/badge/Kubernetes-Manifests-326CE5?logo=kubernetes&logoColor=white)
 ![Argo CD](https://img.shields.io/badge/Argo%20CD-GitOps-EF7B4D?logo=argo&logoColor=white)
 
-This folder contains the runnable GitHub Actions workflow for quality/security checks, building Docker images on an EC2 server, pushing them to Amazon ECR, updating Kubernetes image tags in Git, and letting Argo CD deploy the new version.
+This folder contains the runnable GitHub Actions workflow for IaC checks, Trivy and SonarQube gates, building Docker images on an EC2 server, pushing them to Amazon ECR, updating Kubernetes image tags in Git, and letting Argo CD deploy the new version.
 
 Runnable workflow:
 
@@ -19,10 +19,13 @@ Runnable workflow:
 
 ```mermaid
 flowchart TB
-  dev[Developer] --> push[Push to devops]
+  dev[Developer] --> push[Push to main/devops]
   push --> gha[GitHub Actions]
-  gha --> quality[Build FE/BE<br/>SonarQube optional<br/>Trivy scan]
-  quality --> ssh[SSH to EC2 build host]
+  gha --> iac[Terraform validate<br/>Kubernetes render]
+  iac --> trivy[Trivy filesystem<br/>Trivy IaC]
+  trivy --> sonar[SonarQube optional<br/>Build FE/BE]
+  sonar --> nexus[Nexus check optional]
+  nexus --> ssh[SSH to EC2 build host]
   ssh --> ec2[EC2 Server]
   ec2 --> clone[Clone or reset repo]
   clone --> docker[Docker build FE/BE]
@@ -47,10 +50,12 @@ sequenceDiagram
   participant Argo as Argo CD
   participant EKS as AWS EKS
 
-  Dev->>GH: push to devops
-  GH->>GH: build backend and frontend
-  GH->>GH: run SonarQube when secrets exist
+  Dev->>GH: push to main or devops
+  GH->>GH: validate Terraform and render Kubernetes manifests
   GH->>GH: run Trivy filesystem and IaC scans
+  GH->>GH: run SonarQube when secrets exist
+  GH->>GH: build backend and frontend
+  GH->>GH: check Nexus when NEXUS_URL exists
   GH->>EC2: SSH with EC2 key after gates pass
   EC2->>Git: clone/fetch devops branch
   EC2->>ECR: docker login
@@ -67,7 +72,7 @@ sequenceDiagram
 
 | Trigger | Branch | Purpose |
 |---|---|---|
-| `push` | `devops` | Build/push images and update manifests. |
+| `push` | `main`, `devops` | Build/push images and update manifests. |
 | `workflow_dispatch` | manual | Run workflow from the GitHub UI. |
 
 The workflow skips commits containing:
@@ -96,6 +101,7 @@ These values are defined directly in `cicd.yml`.
 | `BRANCH_NAME` | `${{ github.ref_name }}` | Branch cloned/fetched on EC2. |
 | `FE_MANIFEST` | `k8s/base/05-fe-deployment.yaml` | Frontend deployment manifest updated by CI. |
 | `BE_MANIFEST` | `k8s/base/07-be-deployment.yaml` | Backend deployment manifest updated by CI. |
+| `TERRAFORM_DIR` | `terraform/environments/dev` | Terraform environment validated by CI. |
 
 ## Required GitHub Secrets
 
@@ -109,6 +115,7 @@ Repository > Settings > Secrets and variables > Actions
 |---|---|---|
 | `SONAR_HOST_URL` | No | SonarQube server URL. If missing, SonarQube analysis is skipped. |
 | `SONAR_TOKEN` | No | SonarQube token. If missing, SonarQube analysis is skipped. |
+| `NEXUS_URL` | No | Nexus server URL. If missing, Nexus check is skipped. |
 | `EC2_HOST` | Yes | Public IP or DNS name of the EC2 build server. |
 | `EC2_SSH_PRIVATE_KEY` | Yes | Private SSH key used to connect to EC2 as `ubuntu`. |
 | `EC2_HOST_KEY` | Yes | EC2 SSH host public key for known_hosts verification. |
@@ -119,10 +126,11 @@ Repository > Settings > Secrets and variables > Actions
 
 | Job | Runs on | Purpose |
 |---|---|---|
-| `quality-and-security` | GitHub-hosted Ubuntu runner | Builds backend/frontend, runs optional SonarQube, runs Trivy scans. |
-| `build-and-push` | GitHub-hosted Ubuntu runner plus remote EC2 SSH | Builds images on EC2, pushes ECR images, updates Kubernetes manifests. |
+| `iac-terraform-check` | GitHub-hosted Ubuntu runner | Runs Terraform fmt/init/validate and renders Kubernetes manifests. |
+| `security-gates` | GitHub-hosted Ubuntu runner | Runs Trivy, optional SonarQube, and builds backend/frontend. |
+| `build-push-deploy` | GitHub-hosted Ubuntu runner plus remote EC2 SSH | Checks Nexus optionally, builds images on EC2, pushes ECR images, updates Kubernetes manifests. |
 
-The `build-and-push` job depends on `quality-and-security`. If build, lint, SonarQube, or Trivy fails, image build and manifest update will not run.
+The `build-push-deploy` job depends on `security-gates`, which depends on `iac-terraform-check`. If IaC validation, build, lint, SonarQube, or Trivy fails, image build and manifest update will not run.
 
 The workflow uses the built-in `GITHUB_TOKEN` for committing manifest changes back to the repository, because `permissions.contents` is set to `write`.
 
@@ -293,10 +301,10 @@ Then it commits:
 ci: update image tag to <github.sha>
 ```
 
-and pushes to:
+and pushes to the branch that triggered the workflow:
 
 ```text
-devops
+main or devops
 ```
 
 ## Argo CD Deployment
