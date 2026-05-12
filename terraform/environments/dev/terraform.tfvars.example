@@ -1,0 +1,10 @@
+project_name = "hospital"
+environment  = "dev"
+owner        = "devops"
+aws_region   = "us-east-1"
+
+# Replace with your office/VPN public IP range before using in production-like environments.
+public_access_cidrs = ["0.0.0.0/0"]
+
+single_nat_gateway = true
+

@@ -1,0 +1,30 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+backend.hcl
+!backend.hcl.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+# Build outputs
+bin/
+obj/
+node_modules/
+dist/
+build/
+
+# Local secrets
+.env
+**/.env
+
+# OS and editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
