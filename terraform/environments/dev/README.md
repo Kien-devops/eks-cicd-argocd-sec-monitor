@@ -6,8 +6,7 @@ This environment creates a cost-conscious EKS stack for development.
 
 ```bash
 cp terraform.tfvars.example terraform.tfvars
-cp backend.hcl.example backend.hcl
-terraform init -backend-config=backend.hcl
+terraform init
 terraform plan -out tfplan
 terraform apply tfplan
 aws eks update-kubeconfig --region us-east-1 --name hospital-dev-eks

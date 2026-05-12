@@ -108,24 +108,12 @@ Configure AWS credentials:
 aws configure
 ```
 
-Bootstrap Terraform state storage once:
-
-```powershell
-./terraform/scripts/bootstrap-backend.ps1 -BucketName hospital-terraform-state-devops -TableName hospital-terraform-locks -Region us-east-1
-```
-
-Create `backend.hcl` from the environment example and update the bucket/table values in:
-
-- `terraform/environments/dev/backend.hcl`
-- `terraform/environments/prod/backend.hcl`
-
 Deploy dev infrastructure:
 
 ```bash
 cd terraform/environments/dev
 cp terraform.tfvars.example terraform.tfvars
-cp backend.hcl.example backend.hcl
-terraform init -backend-config=backend.hcl
+terraform init
 terraform plan -out tfplan
 terraform apply tfplan
 aws eks update-kubeconfig --region us-east-1 --name hospital-dev-eks

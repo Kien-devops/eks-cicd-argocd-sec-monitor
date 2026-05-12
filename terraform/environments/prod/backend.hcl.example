@@ -1,6 +1,0 @@
-bucket         = "hospital-terraform-state-devops"
-key            = "hospital/prod/terraform.tfstate"
-region         = "us-east-1"
-dynamodb_table = "hospital-terraform-locks"
-encrypt        = true
-
