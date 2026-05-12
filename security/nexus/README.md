@@ -32,6 +32,7 @@ flowchart LR
 | `npm-group` | npm | Group hosted + proxy registries. |
 | `maven-releases` | Maven | Release artifacts for Java services. |
 | `maven-snapshots` | Maven | Snapshot artifacts for Java services. |
+| `hospital-artifacts` | Raw | CI/CD build artifacts consumed by Docker image builds. |
 
 ## Start
 
@@ -94,6 +95,23 @@ Recommended steps:
 4. Store Nexus credentials in GitHub Actions secrets.
 5. Configure package managers to use Nexus group repositories.
 
+For the current CI/CD workflow, create a raw hosted repository:
+
+```text
+Repository type: raw (hosted)
+Name: hospital-artifacts
+Deployment policy: Allow redeploy
+```
+
+The workflow uploads:
+
+```text
+hospital-artifacts/<branch>/backend-<commit-sha>.zip
+hospital-artifacts/<branch>/frontend-<commit-sha>.zip
+```
+
+Then the EC2 build step downloads those files from Nexus and builds Docker images from the extracted artifacts.
+
 ## NuGet Example
 
 Add source:
@@ -151,4 +169,3 @@ In the UI:
 - Use separate deploy and read-only accounts.
 - Keep admin credentials out of CI jobs.
 - Back up `nexus-data` before upgrades.
-

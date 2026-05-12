@@ -7,7 +7,7 @@
 ![Kubernetes](https://img.shields.io/badge/Kubernetes-Manifests-326CE5?logo=kubernetes&logoColor=white)
 ![Argo CD](https://img.shields.io/badge/Argo%20CD-GitOps-EF7B4D?logo=argo&logoColor=white)
 
-This folder contains the runnable GitHub Actions workflow for IaC checks, Trivy and SonarQube gates, building Docker images on an EC2 server, pushing them to Amazon ECR, updating Kubernetes image tags in Git, and letting Argo CD deploy the new version.
+This folder contains the runnable GitHub Actions workflow for IaC checks, Trivy and SonarQube gates, publishing build artifacts to Nexus, building Docker images from those Nexus artifacts on an EC2 server, scanning images with Trivy, pushing them to Amazon ECR, updating Kubernetes image tags in Git, and letting Argo CD deploy the new version.
 
 Runnable workflow:
 
@@ -24,12 +24,14 @@ flowchart TB
   gha --> iac[Terraform validate<br/>Kubernetes render]
   iac --> trivy[Trivy filesystem<br/>Trivy IaC]
   trivy --> sonar[SonarQube optional<br/>Build FE/BE]
-  sonar --> nexus[Nexus check optional]
+  sonar --> nexus[Publish artifacts<br/>to Nexus raw repo]
   nexus --> ssh[SSH to EC2 build host]
   ssh --> ec2[EC2 Server]
   ec2 --> clone[Clone or reset repo]
-  clone --> docker[Docker build FE/BE]
-  docker --> ecr[Push images to Amazon ECR]
+  clone --> pull[Download artifacts<br/>from Nexus]
+  pull --> docker[Docker build FE/BE]
+  docker --> imgscan[Trivy image scan]
+  imgscan --> ecr[Push images to Amazon ECR]
   gha --> checkout[Checkout repo]
   checkout --> update[Update k8s/base image tags]
   update --> commit[Commit ci: update image tag]
@@ -44,6 +46,7 @@ flowchart TB
 sequenceDiagram
   participant Dev as Developer
   participant GH as GitHub Actions
+  participant Nexus as Nexus Repository
   participant EC2 as EC2 Build Server
   participant ECR as Amazon ECR
   participant Git as Git Repository
@@ -55,11 +58,14 @@ sequenceDiagram
   GH->>GH: run Trivy filesystem and IaC scans
   GH->>GH: run SonarQube when secrets exist
   GH->>GH: build backend and frontend
-  GH->>GH: check Nexus when NEXUS_URL exists
+  GH->>GH: package backend/frontend artifacts
+  GH->>Nexus: upload artifacts to raw repository
   GH->>EC2: SSH with EC2 key after gates pass
-  EC2->>Git: clone/fetch devops branch
+  EC2->>Git: clone/fetch triggering branch
+  EC2->>Nexus: download backend/frontend artifacts
   EC2->>ECR: docker login
-  EC2->>EC2: build frontend and backend images
+  EC2->>EC2: build frontend and backend images from artifacts
+  EC2->>EC2: run Trivy image scans
   EC2->>ECR: push ecr-fe:<sha> and ecr-be:<sha>
   GH->>Git: checkout devops
   GH->>Git: update deployment image tags
@@ -102,6 +108,9 @@ These values are defined directly in `cicd.yml`.
 | `FE_MANIFEST` | `k8s/base/05-fe-deployment.yaml` | Frontend deployment manifest updated by CI. |
 | `BE_MANIFEST` | `k8s/base/07-be-deployment.yaml` | Backend deployment manifest updated by CI. |
 | `TERRAFORM_DIR` | `terraform/environments/dev` | Terraform environment validated by CI. |
+| `NEXUS_RAW_REPOSITORY` | `hospital-artifacts` | Nexus raw hosted repository used for build artifacts. |
+| `BACKEND_ARTIFACT` | `backend-${{ github.sha }}.zip` | Backend publish artifact name. |
+| `FRONTEND_ARTIFACT` | `frontend-${{ github.sha }}.zip` | Frontend build artifact name. |
 
 ## Required GitHub Secrets
 
@@ -115,7 +124,9 @@ Repository > Settings > Secrets and variables > Actions
 |---|---|---|
 | `SONAR_HOST_URL` | No | SonarQube server URL. If missing, SonarQube analysis is skipped. |
 | `SONAR_TOKEN` | No | SonarQube token. If missing, SonarQube analysis is skipped. |
-| `NEXUS_URL` | No | Nexus server URL. If missing, Nexus check is skipped. |
+| `NEXUS_URL` | Yes | Nexus server URL used to upload/download build artifacts. |
+| `NEXUS_USERNAME` | Yes | Nexus user with read/write access to the raw artifact repository. |
+| `NEXUS_PASSWORD` | Yes | Nexus password for `NEXUS_USERNAME`. |
 | `EC2_HOST` | Yes | Public IP or DNS name of the EC2 build server. |
 | `EC2_SSH_PRIVATE_KEY` | Yes | Private SSH key used to connect to EC2 as `ubuntu`. |
 | `EC2_HOST_KEY` | Yes | EC2 SSH host public key for known_hosts verification. |
@@ -127,10 +138,10 @@ Repository > Settings > Secrets and variables > Actions
 | Job | Runs on | Purpose |
 |---|---|---|
 | `iac-terraform-check` | GitHub-hosted Ubuntu runner | Runs Terraform fmt/init/validate and renders Kubernetes manifests. |
-| `security-gates` | GitHub-hosted Ubuntu runner | Runs Trivy, optional SonarQube, and builds backend/frontend. |
-| `build-push-deploy` | GitHub-hosted Ubuntu runner plus remote EC2 SSH | Checks Nexus optionally, builds images on EC2, pushes ECR images, updates Kubernetes manifests. |
+| `security-gates` | GitHub-hosted Ubuntu runner | Runs Trivy, optional SonarQube, builds backend/frontend, and uploads artifacts to Nexus. |
+| `build-push-deploy` | GitHub-hosted Ubuntu runner plus remote EC2 SSH | Downloads artifacts from Nexus, builds images on EC2, scans images with Trivy, pushes ECR images, updates Kubernetes manifests. |
 
-The `build-push-deploy` job depends on `security-gates`, which depends on `iac-terraform-check`. If IaC validation, build, lint, SonarQube, or Trivy fails, image build and manifest update will not run.
+The `build-push-deploy` job depends on `security-gates`, which depends on `iac-terraform-check`. If IaC validation, build, lint, Nexus upload/download, SonarQube, or Trivy fails, image build and manifest update will not run.
 
 The workflow uses the built-in `GITHUB_TOKEN` for committing manifest changes back to the repository, because `permissions.contents` is set to `write`.
 
@@ -261,11 +272,32 @@ The final manifest commit uses GitHub Actions' built-in token, not `GIT_PASSWORD
 
 ## Build and Push Step
 
-The EC2 step runs:
+The EC2 step downloads the packaged artifacts from Nexus:
+
+```text
+backend-<github.sha>.zip
+frontend-<github.sha>.zip
+```
+
+Then it creates runtime Docker images from those extracted artifacts, scans both images with Trivy, and pushes them to ECR.
+
+The equivalent image flow is:
 
 ```bash
-sudo docker build -t "ecr-fe:$IMAGE_TAG" -f hospital_FE/Dockerfile hospital_FE
-sudo docker build -t "ecr-be:$IMAGE_TAG" -f hospital_BE/Hospital_API/Dockerfile hospital_BE/Hospital_API
+curl -H "Authorization: Basic <nexus-auth>" \
+  -o backend-<sha>.zip \
+  "$NEXUS_URL/repository/hospital-artifacts/<branch>/backend-<sha>.zip"
+
+curl -H "Authorization: Basic <nexus-auth>" \
+  -o frontend-<sha>.zip \
+  "$NEXUS_URL/repository/hospital-artifacts/<branch>/frontend-<sha>.zip"
+
+sudo docker build -t "ecr-fe:$IMAGE_TAG" -f Dockerfile.frontend .
+sudo docker build -t "ecr-be:$IMAGE_TAG" -f Dockerfile.backend .
+
+sudo docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.56.2 image ecr-fe:$IMAGE_TAG
+sudo docker run --rm -v /var/run/docker.sock:/var/run/docker.sock aquasec/trivy:0.56.2 image ecr-be:$IMAGE_TAG
+
 sudo docker tag "ecr-fe:$IMAGE_TAG" "$REGISTRY/ecr-fe:$IMAGE_TAG"
 sudo docker tag "ecr-be:$IMAGE_TAG" "$REGISTRY/ecr-be:$IMAGE_TAG"
 sudo docker push "$REGISTRY/ecr-fe:$IMAGE_TAG"
@@ -336,6 +368,13 @@ Build manually:
 cd /home/ubuntu/eks-cicd-argocd-sec-monitor
 sudo docker build -t ecr-fe:test -f hospital_FE/Dockerfile hospital_FE
 sudo docker build -t ecr-be:test -f hospital_BE/Hospital_API/Dockerfile hospital_BE/Hospital_API
+```
+
+For the Nexus artifact flow, also verify the raw repository exists:
+
+```text
+Nexus > Repositories > Create repository > raw (hosted)
+Name: hospital-artifacts
 ```
 
 Check manifests locally:

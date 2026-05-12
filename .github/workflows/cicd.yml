@@ -24,6 +24,9 @@ env:
   FE_MANIFEST: k8s/base/05-fe-deployment.yaml
   BE_MANIFEST: k8s/base/07-be-deployment.yaml
   TERRAFORM_DIR: terraform/environments/dev
+  NEXUS_RAW_REPOSITORY: hospital-artifacts
+  BACKEND_ARTIFACT: backend-${{ github.sha }}.zip
+  FRONTEND_ARTIFACT: frontend-${{ github.sha }}.zip
 
 jobs:
   iac-terraform-check:
@@ -141,6 +144,47 @@ jobs:
         working-directory: ${{ env.FRONTEND_DIR }}
         run: npm run build
 
+      - name: Package backend artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/backend
+          dotnet publish "${{ env.BACKEND_PROJECT }}" --configuration Release --no-restore -o artifacts/backend
+          (cd artifacts/backend && zip -qr "../${BACKEND_ARTIFACT}" .)
+
+      - name: Package frontend artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/frontend
+          cp -R "${FRONTEND_DIR}/dist" artifacts/frontend/dist
+          cp "${FRONTEND_DIR}/nginx.conf" artifacts/frontend/nginx.conf
+          (cd artifacts/frontend && zip -qr "../${FRONTEND_ARTIFACT}" .)
+
+      - name: Upload artifacts to Nexus
+        shell: bash
+        env:
+          NEXUS_URL: ${{ secrets.NEXUS_URL }}
+          NEXUS_USERNAME: ${{ secrets.NEXUS_USERNAME }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          for value in NEXUS_URL NEXUS_USERNAME NEXUS_PASSWORD; do
+            if [ -z "${!value:-}" ]; then
+              echo "$value is required to publish artifacts to Nexus."
+              exit 1
+            fi
+          done
+
+          curl -fsS -u "${NEXUS_USERNAME}:${NEXUS_PASSWORD}" \
+            --upload-file "artifacts/${BACKEND_ARTIFACT}" \
+            "${NEXUS_URL}/repository/${NEXUS_RAW_REPOSITORY}/${BRANCH_NAME}/${BACKEND_ARTIFACT}"
+
+          curl -fsS -u "${NEXUS_USERNAME}:${NEXUS_PASSWORD}" \
+            --upload-file "artifacts/${FRONTEND_ARTIFACT}" \
+            "${NEXUS_URL}/repository/${NEXUS_RAW_REPOSITORY}/${BRANCH_NAME}/${FRONTEND_ARTIFACT}"
+
   build-push-deploy:
     name: Build, Push ECR, and Update GitOps
     runs-on: ubuntu-latest
@@ -154,15 +198,19 @@ jobs:
         shell: bash
         env:
           NEXUS_URL: ${{ secrets.NEXUS_URL }}
+          NEXUS_USERNAME: ${{ secrets.NEXUS_USERNAME }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
         run: |
           set -euo pipefail
 
-          if [ -z "${NEXUS_URL:-}" ]; then
-            echo "NEXUS_URL is not configured. Skipping Nexus check."
-            exit 0
-          fi
+          for value in NEXUS_URL NEXUS_USERNAME NEXUS_PASSWORD; do
+            if [ -z "${!value:-}" ]; then
+              echo "$value is required to download build artifacts from Nexus."
+              exit 1
+            fi
+          done
 
-          curl -fsS "$NEXUS_URL/service/rest/v1/status" >/dev/null
+          curl -fsS -u "${NEXUS_USERNAME}:${NEXUS_PASSWORD}" "$NEXUS_URL/service/rest/v1/status" >/dev/null
 
       - name: Configure SSH key
         shell: bash
@@ -179,20 +227,25 @@ jobs:
           EC2_HOST: ${{ secrets.EC2_HOST }}
           GIT_USERNAME: ${{ secrets.GIT_USERNAME }}
           GIT_PASSWORD: ${{ secrets.GIT_PASSWORD }}
+          NEXUS_URL: ${{ secrets.NEXUS_URL }}
+          NEXUS_USERNAME: ${{ secrets.NEXUS_USERNAME }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
         run: |
           set -euo pipefail
 
           GIT_AUTH=$(printf '%s' "${GIT_USERNAME}:${GIT_PASSWORD}" | base64 | tr -d '\n')
+          NEXUS_AUTH=$(printf '%s' "${NEXUS_USERNAME}:${NEXUS_PASSWORD}" | base64 | tr -d '\n')
 
           ssh -i ~/.ssh/ec2_key \
             -o StrictHostKeyChecking=yes \
             "ubuntu@${EC2_HOST}" \
-            "GIT_AUTH='${GIT_AUTH}' REPO_DIR='${REPO_DIR}' REPO_URL='${REPO_URL}' REGISTRY='${REGISTRY}' AWS_REGION='${AWS_REGION}' IMAGE_TAG='${IMAGE_TAG}' BRANCH_NAME='${BRANCH_NAME}' /bin/bash -s" <<'EOF'
+            "GIT_AUTH='${GIT_AUTH}' NEXUS_AUTH='${NEXUS_AUTH}' NEXUS_URL='${NEXUS_URL}' NEXUS_RAW_REPOSITORY='${NEXUS_RAW_REPOSITORY}' BACKEND_ARTIFACT='${BACKEND_ARTIFACT}' FRONTEND_ARTIFACT='${FRONTEND_ARTIFACT}' REPO_DIR='${REPO_DIR}' REPO_URL='${REPO_URL}' REGISTRY='${REGISTRY}' AWS_REGION='${AWS_REGION}' IMAGE_TAG='${IMAGE_TAG}' BRANCH_NAME='${BRANCH_NAME}' /bin/bash -s" <<'EOF'
           set -euo pipefail
 
           command -v aws >/dev/null 2>&1 || { echo "aws CLI is not installed on EC2"; exit 1; }
           command -v docker >/dev/null 2>&1 || { echo "docker is not installed on EC2"; exit 1; }
           command -v git >/dev/null 2>&1 || { echo "git is not installed on EC2"; exit 1; }
+          command -v unzip >/dev/null 2>&1 || { echo "unzip is not installed on EC2"; exit 1; }
 
           if [ ! -d "$REPO_DIR/.git" ]; then
             rm -rf "$REPO_DIR"
@@ -206,10 +259,64 @@ jobs:
 
           cd "$REPO_DIR"
 
+          ARTIFACT_DIR="/tmp/hospital-artifacts-$IMAGE_TAG"
+          rm -rf "$ARTIFACT_DIR"
+          mkdir -p "$ARTIFACT_DIR/backend" "$ARTIFACT_DIR/frontend"
+
+          curl -fsS \
+            -H "Authorization: Basic ${NEXUS_AUTH}" \
+            -o "$ARTIFACT_DIR/$BACKEND_ARTIFACT" \
+            "$NEXUS_URL/repository/$NEXUS_RAW_REPOSITORY/$BRANCH_NAME/$BACKEND_ARTIFACT"
+
+          curl -fsS \
+            -H "Authorization: Basic ${NEXUS_AUTH}" \
+            -o "$ARTIFACT_DIR/$FRONTEND_ARTIFACT" \
+            "$NEXUS_URL/repository/$NEXUS_RAW_REPOSITORY/$BRANCH_NAME/$FRONTEND_ARTIFACT"
+
+          unzip -q "$ARTIFACT_DIR/$BACKEND_ARTIFACT" -d "$ARTIFACT_DIR/backend"
+          unzip -q "$ARTIFACT_DIR/$FRONTEND_ARTIFACT" -d "$ARTIFACT_DIR/frontend"
+
+          cat > "$ARTIFACT_DIR/Dockerfile.backend" <<'DOCKERFILE'
+          FROM mcr.microsoft.com/dotnet/aspnet:9.0
+          WORKDIR /app
+          ENV ASPNETCORE_URLS=http://+:8080
+          COPY backend/ .
+          USER app
+          EXPOSE 8080
+          CMD ["dotnet", "Hospital_API.dll"]
+          DOCKERFILE
+
+          cat > "$ARTIFACT_DIR/Dockerfile.frontend" <<'DOCKERFILE'
+          FROM nginx:1.27-alpine
+          RUN touch /var/run/nginx.pid && \
+              chown -R nginx:nginx /var/run/nginx.pid /var/cache/nginx /var/log/nginx /etc/nginx/conf.d
+          WORKDIR /usr/share/nginx/html
+          COPY frontend/dist ./
+          COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+          USER nginx
+          EXPOSE 8000
+          DOCKERFILE
+
           aws ecr get-login-password --region "$AWS_REGION" | sudo docker login --username AWS --password-stdin "$REGISTRY"
 
-          sudo docker build -t "ecr-fe:$IMAGE_TAG" -f hospital_FE/Dockerfile hospital_FE
-          sudo docker build -t "ecr-be:$IMAGE_TAG" -f hospital_BE/Hospital_API/Dockerfile hospital_BE/Hospital_API
+          sudo docker build -t "ecr-fe:$IMAGE_TAG" -f "$ARTIFACT_DIR/Dockerfile.frontend" "$ARTIFACT_DIR"
+          sudo docker build -t "ecr-be:$IMAGE_TAG" -f "$ARTIFACT_DIR/Dockerfile.backend" "$ARTIFACT_DIR"
+
+          sudo docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.56.2 image \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --ignore-unfixed \
+            "ecr-fe:$IMAGE_TAG"
+
+          sudo docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:0.56.2 image \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --ignore-unfixed \
+            "ecr-be:$IMAGE_TAG"
 
           sudo docker tag "ecr-fe:$IMAGE_TAG" "$REGISTRY/ecr-fe:$IMAGE_TAG"
           sudo docker tag "ecr-be:$IMAGE_TAG" "$REGISTRY/ecr-be:$IMAGE_TAG"
