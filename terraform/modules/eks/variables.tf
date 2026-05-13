@@ -21,7 +21,7 @@ variable "subnet_ids" {
 variable "endpoint_public_access" {
   description = "Enable public access to the Kubernetes API endpoint."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "endpoint_private_access" {
@@ -33,7 +33,7 @@ variable "endpoint_private_access" {
 variable "public_access_cidrs" {
   description = "CIDR blocks allowed to access the public Kubernetes API endpoint."
   type        = list(string)
-  default     = ["0.0.0.0/0"]
+  default     = ["10.0.0.0/8"]
 }
 
 variable "node_groups" {

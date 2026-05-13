@@ -3,8 +3,9 @@ environment  = "dev"
 owner        = "devops"
 aws_region   = "us-east-1"
 
-# Replace with your office/VPN public IP range before using in production-like environments.
-public_access_cidrs = ["0.0.0.0/0"]
+# Keep the Kubernetes API private by default.
+endpoint_public_access = false
+public_access_cidrs    = ["10.20.0.0/16"]
 
 single_nat_gateway = true
 

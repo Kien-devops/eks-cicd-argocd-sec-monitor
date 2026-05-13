@@ -61,7 +61,7 @@ variable "single_nat_gateway" {
 variable "endpoint_public_access" {
   description = "Enable public EKS API endpoint."
   type        = bool
-  default     = true
+  default     = false
 }
 
 variable "endpoint_private_access" {
@@ -73,7 +73,7 @@ variable "endpoint_private_access" {
 variable "public_access_cidrs" {
   description = "CIDR blocks allowed to reach the public EKS API endpoint."
   type        = list(string)
-  default     = ["0.0.0.0/0"]
+  default     = ["10.20.0.0/16"]
 }
 
 variable "enable_secrets_encryption" {
