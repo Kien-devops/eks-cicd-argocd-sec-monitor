@@ -20,6 +20,10 @@ data "aws_iam_policy_document" "node_assume_role" {
   }
 }
 
+data "aws_caller_identity" "current" {}
+
+data "aws_partition" "current" {}
+
 resource "aws_iam_role" "cluster" {
   name               = "${var.cluster_name}-cluster-role"
   assume_role_policy = data.aws_iam_policy_document.cluster_assume_role.json
@@ -57,12 +61,74 @@ resource "aws_iam_role_policy_attachment" "node_ssm" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+data "aws_iam_policy_document" "kms_eks" {
+  count = var.enable_secrets_encryption ? 1 : 0
+
+  statement {
+    sid = "EnableAccountKmsAdministration"
+
+    actions = [
+      "kms:*"
+    ]
+
+    resources = ["*"]
+
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:${data.aws_partition.current.partition}:iam::${data.aws_caller_identity.current.account_id}:root"]
+    }
+  }
+
+  statement {
+    sid = "AllowEksClusterUseOfKey"
+
+    actions = [
+      "kms:DescribeKey",
+      "kms:Encrypt",
+      "kms:Decrypt",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey*"
+    ]
+
+    resources = ["*"]
+
+    principals {
+      type        = "AWS"
+      identifiers = [aws_iam_role.cluster.arn]
+    }
+  }
+
+  statement {
+    sid = "AllowEksClusterGrantManagement"
+
+    actions = [
+      "kms:CreateGrant",
+      "kms:ListGrants",
+      "kms:RevokeGrant"
+    ]
+
+    resources = ["*"]
+
+    principals {
+      type        = "AWS"
+      identifiers = [aws_iam_role.cluster.arn]
+    }
+
+    condition {
+      test     = "Bool"
+      variable = "kms:GrantIsForAWSResource"
+      values   = ["true"]
+    }
+  }
+}
+
 resource "aws_kms_key" "eks" {
   count = var.enable_secrets_encryption ? 1 : 0
 
   description             = "KMS key for ${var.cluster_name} EKS secret encryption"
   deletion_window_in_days = 7
   enable_key_rotation     = true
+  policy                  = data.aws_iam_policy_document.kms_eks[0].json
 
   tags = merge(var.tags, {
     Name = "${var.cluster_name}-eks-secrets"
@@ -85,7 +151,7 @@ resource "aws_eks_cluster" "this" {
     subnet_ids              = var.subnet_ids
     endpoint_public_access  = var.endpoint_public_access
     endpoint_private_access = var.endpoint_private_access
-    public_access_cidrs     = var.public_access_cidrs
+    public_access_cidrs     = var.endpoint_public_access ? var.public_access_cidrs : null
   }
 
   dynamic "encryption_config" {
@@ -112,6 +178,30 @@ resource "aws_eks_cluster" "this" {
   })
 
   depends_on = [aws_iam_role_policy_attachment.cluster]
+
+  lifecycle {
+    precondition {
+      condition     = var.endpoint_public_access || var.endpoint_private_access
+      error_message = "At least one EKS endpoint access mode must be enabled."
+    }
+
+    precondition {
+      condition     = !var.endpoint_public_access || length(var.public_access_cidrs) > 0
+      error_message = "public_access_cidrs must contain at least one CIDR when endpoint_public_access is true."
+    }
+
+    precondition {
+      condition = !var.endpoint_public_access || alltrue([
+        for cidr in var.public_access_cidrs :
+        !(
+          startswith(cidr, "10.") ||
+          startswith(cidr, "192.168.") ||
+          can(regex("^172\\.(1[6-9]|2[0-9]|3[0-1])\\.", cidr))
+        )
+      ])
+      error_message = "public_access_cidrs cannot contain RFC1918 private CIDRs when endpoint_public_access is true. Use your public IP as /32 or keep the endpoint private-only."
+    }
+  }
 }
 
 resource "aws_iam_openid_connect_provider" "this" {

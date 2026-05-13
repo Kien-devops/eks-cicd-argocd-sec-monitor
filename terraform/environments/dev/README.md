@@ -15,5 +15,5 @@ aws eks update-kubeconfig --region us-east-1 --name hospital-dev-eks
 ## Notes
 
 - Uses one NAT gateway by default to reduce cost.
-- Keeps the public API endpoint open in the example for quick labs.
-- Update `public_access_cidrs` before using with real data.
+- Keeps the Kubernetes API private by default.
+- If public API access is required temporarily, enable `endpoint_public_access` and set `public_access_cidrs` to your public IP as `/32`.

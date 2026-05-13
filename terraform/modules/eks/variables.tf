@@ -33,7 +33,7 @@ variable "endpoint_private_access" {
 variable "public_access_cidrs" {
   description = "CIDR blocks allowed to access the public Kubernetes API endpoint."
   type        = list(string)
-  default     = ["10.0.0.0/8"]
+  default     = []
 }
 
 variable "node_groups" {
@@ -64,7 +64,7 @@ variable "cluster_addons" {
 variable "oidc_thumbprint_list" {
   description = "Thumbprints for the EKS OIDC provider root CA."
   type        = list(string)
-  default     = ["9e99a48a9960b14926bb7f3b02e22da0ecd4e"]
+  default     = ["9e99a48a9960b14926bb7f3b02e22da2b0ab7280"]
 }
 
 variable "enable_secrets_encryption" {

@@ -16,7 +16,8 @@ Included:
 Recommended production settings:
 
 - keep `endpoint_private_access = true`
-- restrict `public_access_cidrs`
+- keep `endpoint_public_access = false` unless operators connect through approved public IP ranges
+- restrict `public_access_cidrs` to `/32` office, VPN, or bastion IPs when public access is enabled
 - use at least two AZs
 - use more than one node in the default node group
 - keep control plane logging enabled

@@ -99,6 +99,6 @@ terraform destroy
 - Dev uses one NAT gateway by default to reduce cost.
 - Prod uses one NAT gateway per AZ by default.
 - Terraform uses local state by default in this lab setup.
-- Restrict `public_access_cidrs` before using this with real workloads.
+- Keep the EKS API endpoint private by default. If public endpoint access is required, restrict `public_access_cidrs` to approved public IP ranges.
 - Terraform does not create ECR repositories. Use an existing registry or create repositories from your CI/CD bootstrap process.
 - Terraform does not store application secrets; create Kubernetes secrets separately or with an external secret manager.

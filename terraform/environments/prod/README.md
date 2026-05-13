@@ -14,7 +14,8 @@ aws eks update-kubeconfig --region us-east-1 --name hospital-prod-eks
 
 ## Production Checklist
 
-- Replace `public_access_cidrs` with office or VPN IP ranges.
+- Keep `endpoint_private_access = true` and `endpoint_public_access = false` unless operators connect through VPN or a bastion.
+- If public API access is required, set `public_access_cidrs` only to office or VPN public IP ranges.
 - Review node sizes and desired capacity.
 - Review AWS service quotas before applying.
 - Keep `single_nat_gateway = false` for AZ-level resilience.

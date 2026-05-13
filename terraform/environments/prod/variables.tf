@@ -73,7 +73,7 @@ variable "endpoint_private_access" {
 variable "public_access_cidrs" {
   description = "CIDR blocks allowed to reach the public EKS API endpoint."
   type        = list(string)
-  default     = ["10.30.0.0/16"]
+  default     = []
 }
 
 variable "enable_secrets_encryption" {

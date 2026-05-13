@@ -5,7 +5,8 @@ aws_region   = "us-east-1"
 
 # Keep the Kubernetes API private by default.
 endpoint_public_access = false
-public_access_cidrs    = ["10.30.0.0/16"]
+# If you enable public access, set this to your office or VPN public IP ranges.
+public_access_cidrs = []
 
 single_nat_gateway = false
 
