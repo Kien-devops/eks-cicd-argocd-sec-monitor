@@ -36,5 +36,5 @@ kubectl get nodes
 ## 5. Deploy Kubernetes Manifests
 
 ```bash
-kubectl apply -k ../../../k8s/base
+kubectl apply -k ../../../k8s/overlays/dev
 ```

@@ -19,7 +19,7 @@ Runnable workflow:
 
 ```mermaid
 flowchart TB
-  dev[Developer] --> push[Push to main/devops]
+  dev[Developer] --> push[Push to main/stag/devops]
   push --> gha[GitHub Actions]
   gha --> iac[Terraform validate<br/>Kubernetes render]
   iac --> restore[Restore dependencies<br/>through Nexus cache]
@@ -35,7 +35,7 @@ flowchart TB
   docker --> imgscan[Trivy image scan]
   imgscan --> ecr[Push images to Amazon ECR]
   gha --> checkout[Checkout repo]
-  checkout --> update[Update k8s/base image tags]
+  checkout --> update[Update k8s overlay image tags]
   update --> commit[Commit ci: update image tag]
   commit --> git[Push to devops]
   git --> argocd[Argo CD detects Git change]
@@ -55,7 +55,7 @@ sequenceDiagram
   participant Argo as Argo CD
   participant EKS as AWS EKS
 
-  Dev->>GH: push to main or devops
+  Dev->>GH: push to main, stag, or devops
   GH->>GH: validate Terraform and render Kubernetes manifests
   GH->>Nexus: restore NuGet and npm dependencies through cache
   GH->>GH: build backend and frontend
@@ -81,7 +81,7 @@ sequenceDiagram
 
 | Trigger | Branch | Purpose |
 |---|---|---|
-| `push` | `main`, `devops` | Build/push images and update manifests. |
+| `push` | `main`, `stag`, `devops` | Build/push images and update environment manifests. |
 | `workflow_dispatch` | manual | Run workflow from the GitHub UI. |
 
 The workflow skips commits containing:
@@ -108,8 +108,9 @@ These values are defined directly in `cicd.yml`.
 | `AWS_REGION` | `us-east-1` | AWS region for ECR login. |
 | `IMAGE_TAG` | `${{ github.sha }}` | Immutable image tag. |
 | `BRANCH_NAME` | `${{ github.ref_name }}` | Branch cloned/fetched on EC2. |
-| `FE_MANIFEST` | `k8s/base/05-fe-deployment.yaml` | Frontend deployment manifest updated by CI. |
-| `BE_MANIFEST` | `k8s/base/07-be-deployment.yaml` | Backend deployment manifest updated by CI. |
+| `K8S_ENV` | branch-based | Environment selected by branch: `main=prod`, `stag=stag`, all other branches use `dev`. |
+| `K8S_OVERLAY` | `k8s/overlays/<env>` | Kustomize overlay rendered by CI and watched by Argo CD. |
+| `K8S_KUSTOMIZATION` | `k8s/overlays/<env>/kustomization.yaml` | Overlay file updated by CI with the new image tag. |
 | `TERRAFORM_DIR` | `terraform/environments/dev` | Terraform environment validated by CI. |
 | `NEXUS_RAW_REPOSITORY` | `hospital-artifacts` | Nexus raw hosted repository used for build artifacts. |
 | `NEXUS_NUGET_REPOSITORY` | `nuget-group` | Nexus NuGet group repository used for backend dependency restore. |
@@ -342,16 +343,22 @@ Image tags use the full commit SHA:
 After pushing images, the workflow updates:
 
 ```text
-k8s/base/05-fe-deployment.yaml
-k8s/base/07-be-deployment.yaml
+k8s/overlays/<env>/kustomization.yaml
 ```
 
 It replaces old image tags with:
 
 ```text
-image: 606030503959.dkr.ecr.us-east-1.amazonaws.com/ecr-fe:<github.sha>
-image: 606030503959.dkr.ecr.us-east-1.amazonaws.com/ecr-be:<github.sha>
+newTag: <github.sha>
 ```
+
+Environment selection is branch-based:
+
+| Branch | Overlay | Namespace |
+|---|---|---|
+| `main` | `k8s/overlays/prod` | `hospital-prod` |
+| `stag` | `k8s/overlays/stag` | `hospital-stag` |
+| `devops` and manual runs from other branches | `k8s/overlays/dev` | `hospital-dev` |
 
 Then it commits:
 
@@ -367,13 +374,13 @@ main or devops
 
 ## Argo CD Deployment
 
-Argo CD watches Git. Once the manifest commit lands on `devops`, Argo CD sees the new image tag and syncs the Kubernetes deployment.
+Argo CD watches Git. Once the manifest commit lands, Argo CD sees the new image tag in the environment overlay and syncs the Kubernetes deployment. Configure each Argo CD application to watch the matching path, for example `k8s/overlays/dev`, `k8s/overlays/stag`, or `k8s/overlays/prod`.
 
 Check:
 
 ```bash
 kubectl -n argocd get applications
-kubectl -n hospital get deploy,pods
+kubectl -n hospital-dev get deploy,pods
 ```
 
 ## Manual Validation
@@ -413,7 +420,9 @@ npm group:   npm-group
 Check manifests locally:
 
 ```bash
-kubectl kustomize k8s/base
+kubectl kustomize k8s/overlays/dev
+kubectl kustomize k8s/overlays/stag
+kubectl kustomize k8s/overlays/prod
 ```
 
 ## Troubleshooting
@@ -426,9 +435,9 @@ kubectl kustomize k8s/base
 | `aws CLI is not installed on EC2` | AWS CLI missing | Install AWS CLI on EC2. |
 | ECR login fails | EC2 IAM role lacks permissions | Attach ECR push permissions. |
 | Docker build fails | Docker not installed or Dockerfile error | Validate manual `sudo docker build`. |
-| Manifest path not found | Wrong path in workflow | Current repo uses `k8s/base/*.yaml`. |
+| Manifest path not found | Wrong path in workflow | Current repo updates `k8s/overlays/<env>/kustomization.yaml`. |
 | Workflow loops forever | Skip guard missing | Keep `ci: update image tag` guard in workflow. |
-| Argo CD does not update pods | Argo app path/branch mismatch | Confirm Argo CD watches `devops` and `k8s/base`. |
+| Argo CD does not update pods | Argo app path/branch mismatch | Confirm Argo CD watches the right branch and `k8s/overlays/<env>`. |
 
 ## Maintenance Checklist
 
@@ -436,5 +445,5 @@ kubectl kustomize k8s/base
 - Keep EC2 Docker and AWS CLI updated.
 - Keep ECR repositories protected and scanned.
 - Keep `EC2_HOST_KEY` updated if the EC2 instance is rebuilt.
-- Keep manifest paths in sync with repo structure.
+- Keep overlay paths in sync with repo structure.
 - Confirm Argo CD app points to the same branch and path as this workflow updates.
