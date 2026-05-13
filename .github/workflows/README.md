@@ -240,6 +240,20 @@ Example format:
 -----END OPENSSH PRIVATE KEY-----
 ```
 
+The matching public key must be present on the EC2 instance in:
+
+```bash
+/home/ubuntu/.ssh/authorized_keys
+```
+
+You can confirm the public key for the secret locally with:
+
+```bash
+ssh-keygen -y -f <private-key-file>
+```
+
+If GitHub Actions reports `Permission denied (publickey)`, the private key is readable but EC2 did not accept it. Recheck that `EC2_HOST` points to the expected instance, the workflow connects as `ubuntu`, and the matching public key is installed for that user.
+
 ### 3. Host Key
 
 Generate the host key from your local machine:

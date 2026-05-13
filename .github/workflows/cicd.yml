@@ -256,12 +256,29 @@ jobs:
 
       - name: Configure SSH key
         shell: bash
+        env:
+          EC2_SSH_PRIVATE_KEY: ${{ secrets.EC2_SSH_PRIVATE_KEY }}
+          EC2_HOST_KEY: ${{ secrets.EC2_HOST_KEY }}
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh
           install -m 600 /dev/null ~/.ssh/ec2_key
-          printf '%s' "${{ secrets.EC2_SSH_PRIVATE_KEY }}" > ~/.ssh/ec2_key
-          printf '%s\n' "${{ secrets.EC2_HOST_KEY }}" >> ~/.ssh/known_hosts
+          printf '%s\n' "$EC2_SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/ec2_key
+          printf '%s\n' "$EC2_HOST_KEY" >> ~/.ssh/known_hosts
+          ssh-keygen -y -f ~/.ssh/ec2_key >/dev/null
+
+      - name: Verify EC2 SSH access
+        shell: bash
+        env:
+          EC2_HOST: ${{ secrets.EC2_HOST }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/ec2_key \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            "ubuntu@${EC2_HOST}" \
+            "echo 'EC2 SSH authentication succeeded'"
 
       - name: Build and push images on EC2
         shell: bash
@@ -280,6 +297,8 @@ jobs:
           NEXUS_AUTH=$(printf '%s' "${NEXUS_USERNAME}:${NEXUS_PASSWORD}" | base64 | tr -d '\n')
 
           ssh -i ~/.ssh/ec2_key \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
             -o StrictHostKeyChecking=yes \
             "ubuntu@${EC2_HOST}" \
             "GIT_AUTH='${GIT_AUTH}' NEXUS_AUTH='${NEXUS_AUTH}' NEXUS_URL='${NEXUS_URL}' NEXUS_RAW_REPOSITORY='${NEXUS_RAW_REPOSITORY}' BACKEND_ARTIFACT='${BACKEND_ARTIFACT}' FRONTEND_ARTIFACT='${FRONTEND_ARTIFACT}' REPO_DIR='${REPO_DIR}' REPO_URL='${REPO_URL}' REGISTRY='${REGISTRY}' AWS_REGION='${AWS_REGION}' IMAGE_TAG='${IMAGE_TAG}' BRANCH_NAME='${BRANCH_NAME}' /bin/bash -s" <<'EOF'
@@ -331,7 +350,8 @@ jobs:
 
           cat > "$ARTIFACT_DIR/Dockerfile.frontend" <<'DOCKERFILE'
           FROM nginx:1.27-alpine
-          RUN touch /var/run/nginx.pid && \
+          RUN apk upgrade --no-cache && \
+              touch /var/run/nginx.pid && \
               chown -R nginx:nginx /var/run/nginx.pid /var/cache/nginx /var/log/nginx /etc/nginx/conf.d
           WORKDIR /usr/share/nginx/html
           COPY frontend/dist ./

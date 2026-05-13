@@ -10,9 +10,10 @@ RUN npm run build
 
 FROM nginx:1.27-alpine AS runtime
 
+# Pull patched Alpine packages before dropping privileges.
 # nginx user (UID 101) already exists in alpine image.
-# Grant it ownership of the directories nginx needs to write to at runtime.
-RUN touch /var/run/nginx.pid && \
+RUN apk upgrade --no-cache && \
+    touch /var/run/nginx.pid && \
     chown -R nginx:nginx /var/run/nginx.pid /var/cache/nginx /var/log/nginx /etc/nginx/conf.d
 
 WORKDIR /usr/share/nginx/html
