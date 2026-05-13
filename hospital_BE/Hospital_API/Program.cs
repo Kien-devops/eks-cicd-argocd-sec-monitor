@@ -29,7 +29,7 @@ Thread.CurrentThread.CurrentUICulture = CultureInfo.InvariantCulture;
 var builder = WebApplication.CreateBuilder(args);
 
 // Thêm AutoMapper
-builder.Services.AddAutoMapper(typeof(MappingProfile));
+builder.Services.AddAutoMapper(_ => { }, typeof(MappingProfile));
 
 // Thêm dịch vụ CORS
 builder.Services.AddCors(options =>
