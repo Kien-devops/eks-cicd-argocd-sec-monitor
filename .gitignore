@@ -24,6 +24,10 @@ build/
 **/.env
 .env.*
 **/.env.*
+security/.env
+security/sonarqube/.env
+security/nexus/.env
+security/trivy/.env
 !.env.example
 !**/.env.example
 
