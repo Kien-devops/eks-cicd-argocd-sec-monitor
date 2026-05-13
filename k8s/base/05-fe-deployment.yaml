@@ -35,7 +35,7 @@ spec:
             capabilities:
               drop:
                 - ALL
-          image: 606030503959.dkr.ecr.us-east-1.amazonaws.com/ecr-fe:6b780308e06c5c2ad7de521bfb6e52e933c56ce5
+          image: 606030503959.dkr.ecr.us-east-1.amazonaws.com/ecr-fe:ea729165289e467954dc42f2cb0bc3597dc841c4
           imagePullPolicy: Always
           ports:
             - containerPort: 8000
