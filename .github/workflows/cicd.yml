@@ -110,7 +110,8 @@ jobs:
             --name nexus-nuget \
             --username "$NEXUS_USERNAME" \
             --password "$NEXUS_PASSWORD" \
-            --store-password-in-clear-text
+            --store-password-in-clear-text \
+            --allow-insecure-connections
 
           NPM_REGISTRY="${NEXUS_URL}/repository/${NEXUS_NPM_REPOSITORY}/"
           NPM_AUTH=$(printf '%s' "${NEXUS_USERNAME}:${NEXUS_PASSWORD}" | base64 | tr -d '\n')
