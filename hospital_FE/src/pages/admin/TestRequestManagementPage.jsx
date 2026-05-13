@@ -24,6 +24,24 @@ function TestRequestManagementPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
+  const fetchData = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      const [requestsResponse, labTestsResponse] = await Promise.all([
+        axios.get(API_URL),
+        axios.get(LABTEST_API_URL)
+      ]);
+      setRequests(requestsResponse.data);
+      setLabTests(labTestsResponse.data);
+    } catch (err) {
+      setError('CÃ³ lá»—i xáº£y ra khi táº£i dá»¯ liá»‡u. Vui lÃ²ng thá»­ láº¡i sau.');
+      console.error('Error fetching data:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   // Load test requests & lab tests
   useEffect(() => {
     const fetchData = async () => {
