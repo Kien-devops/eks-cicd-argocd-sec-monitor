@@ -5,8 +5,20 @@
 ![Nexus](https://img.shields.io/badge/Nexus-Artifact%20Repository-1B1C30?logo=sonatype&logoColor=white)
 ![Trivy](https://img.shields.io/badge/Trivy-Vulnerability%20Scanner-1904DA?logo=aqua&logoColor=white)
 ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-SonarQube%20DB-4169E1?logo=postgresql&logoColor=white)
+![GitHub Actions](https://img.shields.io/badge/GitHub%20Actions-Security%20Gate-2088FF?logo=githubactions&logoColor=white)
+![DevSecOps](https://img.shields.io/badge/DevSecOps-Learning%20Lab-111827)
 
 This folder contains the security servers and scan tooling used by the Hospital EKS GitOps platform.
+
+## Learning Map
+
+| Topic | Tool |
+|---|---|
+| Code quality and hotspots | SonarQube |
+| Dependency and image vulnerability scanning | Trivy |
+| IaC and Kubernetes manifest scanning | Trivy |
+| Artifact repository and dependency proxy | Nexus |
+| CI/CD security gate | GitHub Actions |
 
 ## Tooling
 
@@ -137,4 +149,3 @@ Minimum policy:
 - `trivy/README.md`
 - `HARDENING.md`
 - `SETUP.md`
-

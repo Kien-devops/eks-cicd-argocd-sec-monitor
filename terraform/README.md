@@ -4,8 +4,20 @@
 ![AWS](https://img.shields.io/badge/AWS-Cloud-232F3E?logo=amazonaws&logoColor=white)
 ![Amazon EKS](https://img.shields.io/badge/Amazon%20EKS-Kubernetes-FF9900?logo=amazoneks&logoColor=white)
 ![VPC](https://img.shields.io/badge/AWS%20VPC-Networking-FF9900?logo=amazonaws&logoColor=white)
+![KMS](https://img.shields.io/badge/AWS%20KMS-Secrets%20Encryption-FF9900?logo=amazonaws&logoColor=white)
+![IAM](https://img.shields.io/badge/AWS%20IAM-Least%20Privilege-FF9900?logo=amazonaws&logoColor=white)
 
 This folder provisions AWS infrastructure for the hospital platform.
+
+## Learning Map
+
+| Topic | What to study here |
+|---|---|
+| Environment separation | `terraform/environments/dev` and `terraform/environments/prod`. |
+| Module design | Shared `network` and `eks` modules. |
+| EKS foundation | Cluster, managed node groups, addons, IAM roles, and KMS secret encryption. |
+| Network foundation | VPC, public/private subnets, route tables, and NAT gateway strategy. |
+| Cost tradeoff | Dev uses a single NAT gateway; prod can use one NAT gateway per AZ. |
 
 ## Architecture
 

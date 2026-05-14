@@ -1,20 +1,21 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: hospital-traefik-app
+  name: monitoring-rules
   namespace: argocd
 spec:
   project: default
   source:
     repoURL: https://github.com/Kien-devops/eks-cicd-argocd-sec-monitor.git
-    targetRevision: main
-    path: k8s/overlays/prod
+    targetRevision: devops
+    path: k8s/monitoring
   destination:
     server: https://kubernetes.default.svc
-    namespace: hospital-prod
+    namespace: monitoring
   syncPolicy:
     automated:
       prune: true
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+

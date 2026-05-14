@@ -1,6 +1,20 @@
 # EKS Module
 
+![Terraform Module](https://img.shields.io/badge/Terraform-Module-844FBA?logo=terraform&logoColor=white)
+![Amazon EKS](https://img.shields.io/badge/Amazon%20EKS-Control%20Plane-FF9900?logo=amazoneks&logoColor=white)
+![IAM](https://img.shields.io/badge/AWS%20IAM-Roles-FF9900?logo=amazonaws&logoColor=white)
+![KMS](https://img.shields.io/badge/KMS-Secret%20Encryption-FF9900?logo=amazonaws&logoColor=white)
+
 Creates the EKS control plane and managed node groups.
+
+## Learning Focus
+
+| Topic | What this module teaches |
+|---|---|
+| EKS control plane | Cluster endpoint, logging, addons, and versioning. |
+| Node security | Managed node groups in private subnets. |
+| IAM integration | Control plane role, node role, OIDC provider, and addon roles. |
+| Secret protection | Optional KMS encryption for Kubernetes secrets. |
 
 Included:
 

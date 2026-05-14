@@ -4,10 +4,40 @@
 ![Kubernetes](https://img.shields.io/badge/Kubernetes-Deployments-326CE5?logo=kubernetes&logoColor=white)
 ![GitHub](https://img.shields.io/badge/GitHub-Source%20of%20Truth-181717?logo=github&logoColor=white)
 ![YAML](https://img.shields.io/badge/YAML-Manifests-CB171E?logo=yaml&logoColor=white)
+![Helm](https://img.shields.io/badge/Helm-Charts-0F1689?logo=helm&logoColor=white)
+![Prometheus](https://img.shields.io/badge/Prometheus-GitOps%20Managed-E6522C?logo=prometheus&logoColor=white)
+![Kyverno](https://img.shields.io/badge/Kyverno-Policy%20as%20Code-326CE5?logo=kubernetes&logoColor=white)
 
-This folder contains the Argo CD `Application` that continuously deploys the Kubernetes runtime stack from Git.
+This folder contains Argo CD `Application` manifests. These files tell Argo CD what to install or sync into the EKS cluster.
 
 Argo CD is the desired-state controller for the cluster. Git is the source of truth, and manual cluster changes may be reverted when self-heal is enabled.
+
+## Folder Responsibility
+
+```text
+argocd/ = GitOps installation and sync definitions
+k8s/    = Kubernetes resources that run in the cluster
+```
+
+Examples:
+
+| Argo CD path | What it does | Runtime path |
+|---|---|---|
+| `hospital-traefik-app.yaml` | Syncs the hospital app. | `k8s/base` |
+| `security/10-kyverno-app.yaml` | Installs Kyverno from Helm. | `security` namespace |
+| `security/00-security-namespace-policies-app.yaml` | Syncs Kyverno policies. | `k8s/security` |
+| `monitoring/10-kube-prometheus-stack-app.yaml` | Installs Prometheus, Grafana, and Alertmanager from Helm. | `monitoring` namespace |
+| `monitoring/20-monitoring-rules-app.yaml` | Syncs Prometheus alert rules. | `k8s/monitoring` |
+
+## Learning Map
+
+| Concept | Local example |
+|---|---|
+| App of apps mindset | Security and monitoring are represented as separate Argo CD Applications. |
+| Helm through Argo CD | `security/*-app.yaml` and `monitoring/10-kube-prometheus-stack-app.yaml`. |
+| Kustomize through Argo CD | `hospital-traefik-app.yaml`, `security-namespace-policies`, and `monitoring-rules`. |
+| Self-healing | Application specs use `syncPolicy.automated.selfHeal`. |
+| Drift control | Application specs use `syncPolicy.automated.prune`. |
 
 ## Architecture
 
@@ -22,11 +52,76 @@ flowchart LR
     ns2 --> workloads[Frontend and backend workloads]
 ```
 
+## Architecture With Security And Monitoring
+
+```mermaid
+flowchart TB
+    git[Git repository<br/>branch devops] --> argocd[Argo CD<br/>namespace argocd]
+
+    argocd --> app[hospital-traefik-app]
+    app --> appPath[k8s/base]
+    appPath --> hospitalNs[namespace hospital]
+    appPath --> traefikNs[namespace traefik]
+    hospitalNs --> fe[Frontend pods]
+    hospitalNs --> be[Backend API pods]
+    traefikNs --> gateway[Traefik Gateway<br/>Gateway and HTTPRoute]
+
+    argocd --> kyvernoApp[kyverno app<br/>Helm chart]
+    argocd --> trivyApp[trivy-operator app<br/>Helm chart]
+    argocd --> falcoApp[falco app<br/>Helm chart]
+    argocd --> policyApp[security-namespace-policies app]
+    argocd --> promApp[kube-prometheus-stack app<br/>Helm chart]
+    argocd --> ruleApp[monitoring-rules app]
+
+    kyvernoApp --> securityNs[namespace security]
+    trivyApp --> securityNs
+    falcoApp --> securityNs
+    policyApp --> securityPath[k8s/security]
+    securityPath --> securityNs
+
+    securityNs --> kyverno[Kyverno<br/>admission policies]
+    securityNs --> trivy[Trivy Operator<br/>vulnerability reports]
+    securityNs --> falco[Falco<br/>runtime detection]
+
+    promApp --> monitoringNs[namespace monitoring]
+    ruleApp --> monitoringPath[k8s/monitoring]
+    monitoringPath --> monitoringNs
+    monitoringNs --> prometheus[Prometheus<br/>metrics and rules]
+    monitoringNs --> grafana[Grafana<br/>dashboards]
+    monitoringNs --> alertmanager[Alertmanager<br/>alerts]
+
+    kyverno -. audits / blocks unsafe manifests .-> hospitalNs
+    trivy -. scans workloads and images .-> hospitalNs
+    falco -. observes runtime events .-> hospitalNs
+    prometheus -. scrapes cluster and workload metrics .-> hospitalNs
+    prometheus -. receives Kubernetes metrics .-> traefikNs
+    alertmanager -. routes alerts .-> prometheus
+```
+
+Runtime model:
+
+1. GitHub Actions updates image tags in Git after build and image scanning.
+2. Argo CD syncs the app manifests from `k8s/base` into the `hospital` and `traefik` namespaces.
+3. Argo CD also installs the security tools from `argocd/security`.
+4. Kyverno checks Kubernetes resources at admission time. Policies are currently in `Audit` mode.
+5. Trivy Operator scans live cluster workloads and produces vulnerability/config reports.
+6. Falco watches running containers and reports suspicious runtime behavior.
+7. Prometheus collects cluster metrics, Grafana visualizes them, and Alertmanager handles alerts.
+
+The important split is:
+
+```text
+argocd/security and argocd/monitoring = install/manage tools
+k8s/security and k8s/monitoring       = configure those tools after they exist
+```
+
 ## Files
 
 | File | Purpose |
 |---|---|
-| `hospital-traefik-app.yaml` | Argo CD Application for the Hospital Kubernetes stack. |
+| `hospital-traefik-app.yaml` | Argo CD Application that syncs the Hospital Kubernetes stack from `k8s/base`. |
+| `security/` | Argo CD Applications that install security tools and sync security config from `k8s/security`. |
+| `monitoring/` | Argo CD Applications that install monitoring tools and sync monitoring config from `k8s/monitoring`. |
 | `SETUP.md` | Step-by-step Argo CD installation notes. |
 | `images/` | Documentation images. |
 
@@ -60,12 +155,42 @@ sequenceDiagram
     A->>K: Self-heal drift
 ```
 
+## Bootstrap Order
+
+```mermaid
+flowchart LR
+  eks[EKS ready] --> argo[Install Argo CD]
+  argo --> app[Apply hospital-traefik-app]
+  argo --> kyverno[Apply Kyverno app]
+  kyverno --> policies[Apply security policies app]
+  argo --> trivy[Apply Trivy Operator app]
+  argo --> falco[Apply Falco app]
+  argo --> prom[Apply kube-prometheus-stack app]
+  prom --> rules[Apply monitoring-rules app]
+```
+
 ## Apply the Application
 
 Run on a host with cluster access:
 
 ```bash
 kubectl apply -f argocd/hospital-traefik-app.yaml
+```
+
+Apply the security Applications:
+
+```bash
+kubectl apply -f argocd/security/10-kyverno-app.yaml
+kubectl apply -f argocd/security/00-security-namespace-policies-app.yaml
+kubectl apply -f argocd/security/20-trivy-operator-app.yaml
+kubectl apply -f argocd/security/30-falco-app.yaml
+```
+
+Apply the monitoring Applications:
+
+```bash
+kubectl apply -f argocd/monitoring/10-kube-prometheus-stack-app.yaml
+kubectl apply -f argocd/monitoring/20-monitoring-rules-app.yaml
 ```
 
 ## Access the Argo CD UI
@@ -94,9 +219,28 @@ echo
 ```bash
 kubectl -n argocd get applications
 kubectl -n argocd describe application hospital-traefik-app
+kubectl -n argocd get application kyverno trivy-operator falco security-namespace-policies
+kubectl -n argocd get application kube-prometheus-stack monitoring-rules
 kubectl get pods -n hospital
 kubectl get pods -n traefik
+kubectl get pods -n security
+kubectl get pods -n monitoring
+kubectl get clusterpolicy
+kubectl get vulnerabilityreports -A
+kubectl get prometheusrule -n monitoring
 kubectl get gateway,httproute -n hospital
+```
+
+Access Grafana:
+
+```bash
+kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
+```
+
+Open:
+
+```text
+http://localhost:3000
 ```
 
 If you use the Argo CD CLI:

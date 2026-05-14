@@ -5,8 +5,22 @@
 ![Argo CD](https://img.shields.io/badge/Argo%20CD-GitOps-EF7B4D?logo=argo&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-Images-2496ED?logo=docker&logoColor=white)
 ![NetworkPolicy](https://img.shields.io/badge/NetworkPolicy-Zero%20Trust-326CE5?logo=kubernetes&logoColor=white)
+![Prometheus](https://img.shields.io/badge/Prometheus-Rules-E6522C?logo=prometheus&logoColor=white)
+![Kyverno](https://img.shields.io/badge/Kyverno-Policies-326CE5?logo=kubernetes&logoColor=white)
 
 This folder contains the Kubernetes runtime manifests deployed by Argo CD.
+
+The `k8s/` folder is the runtime layer. It contains resources that run in, or configure things inside, the Kubernetes cluster. Argo CD Application manifests live in `argocd/`.
+
+## Learning Map
+
+| Topic | Where it appears |
+|---|---|
+| Application runtime | `k8s/base` |
+| Environment overlays | `k8s/overlays/dev`, `k8s/overlays/stag`, `k8s/overlays/prod` |
+| Cluster security configuration | `k8s/security` |
+| Cluster monitoring configuration | `k8s/monitoring` |
+| GitOps installer layer | `argocd/` |
 
 ## Architecture
 
@@ -59,7 +73,22 @@ k8s/
       kustomization.yaml
     prod/
       kustomization.yaml
+  security/
+    namespace.yaml
+    policies/
+  monitoring/
+    namespace.yaml
+    rules/
 ```
+
+## Runtime Responsibility
+
+| Path | Purpose | Installed or synced by |
+|---|---|---|
+| `k8s/base` | Hospital frontend/backend runtime resources. | `argocd/hospital-traefik-app.yaml` |
+| `k8s/overlays/*` | Environment-specific replica/image overrides. | Manual apply or future environment-specific Argo CD apps. |
+| `k8s/security` | Kyverno policies and security namespace. | `argocd/security/00-security-namespace-policies-app.yaml` |
+| `k8s/monitoring` | Prometheus rules and monitoring namespace. | `argocd/monitoring/20-monitoring-rules-app.yaml` |
 
 ## Environments
 
