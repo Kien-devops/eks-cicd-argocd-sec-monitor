@@ -7,7 +7,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/Kien-devops/eks-cicd-argocd-sec-monitor.git
-    targetRevision: devops
+    targetRevision: main
     path: k8s/security
   destination:
     server: https://kubernetes.default.svc
