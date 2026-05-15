@@ -59,7 +59,6 @@ sequenceDiagram
 ```text
 k8s/
   base/
-    namespace.yaml
     kustomization.yaml
     05-fe-deployment.yaml
     06-fe-service.yaml
@@ -68,11 +67,16 @@ k8s/
     10-network-policy.yaml
   overlays/
     dev/
+      namespace.yaml
       kustomization.yaml
     stag/
+      namespace.yaml
       kustomization.yaml
     prod/
+      namespace.yaml
       kustomization.yaml
+  secrets/
+    default-connection.txt.example
   security/
     namespace.yaml
     policies/
@@ -111,9 +115,16 @@ kubectl apply -k k8s/overlays/prod
 Create these before deploying the backend:
 
 ```bash
+cp k8s/secrets/default-connection.txt.example k8s/secrets/default-connection.txt
+vi k8s/secrets/default-connection.txt
+
+kubectl apply -f k8s/overlays/dev/namespace.yaml
 kubectl -n hospital-dev create secret generic be-db-secret \
-  --from-literal=default-connection='Server=<host>;Database=<db>;User Id=<user>;Password=<password>;TrustServerCertificate=True'
+  --from-file=default-connection=k8s/secrets/default-connection.txt \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
+
+`k8s/secrets/default-connection.txt` is ignored by Git. Keep the real host, database name, user, and password only in that local file or in your cluster secret manager.
 
 If images are private in ECR, create an image pull secret or configure worker node IAM/ECR access:
 

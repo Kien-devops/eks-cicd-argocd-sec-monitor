@@ -84,16 +84,22 @@ ConnectionStrings__DefaultConnection
 Create the secret:
 
 ```bash
-kubectl -n hospital create secret generic be-db-secret \
-  --from-literal=default-connection='Server=<DB_HOST>,1433;Database=hospital;User Id=sa;Password=<DB_PASSWORD>;TrustServerCertificate=True;Encrypt=True' \
+cp k8s/secrets/default-connection.txt.example k8s/secrets/default-connection.txt
+vi k8s/secrets/default-connection.txt
+
+kubectl apply -f k8s/overlays/dev/namespace.yaml
+kubectl -n hospital-dev create secret generic be-db-secret \
+  --from-file=default-connection=k8s/secrets/default-connection.txt \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
+
+`k8s/secrets/default-connection.txt` is ignored by Git. Do not commit the real database host or password.
 
 Restart after changing the secret:
 
 ```bash
-kubectl -n hospital rollout restart deployment/be-deployment-v1
-kubectl -n hospital rollout status deployment/be-deployment-v1
+kubectl -n hospital-dev rollout restart deployment/be-deployment-v1
+kubectl -n hospital-dev rollout status deployment/be-deployment-v1
 ```
 
 ## Docker

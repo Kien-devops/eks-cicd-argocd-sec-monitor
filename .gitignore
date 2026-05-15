@@ -37,6 +37,9 @@ security/nexus/.env
 security/trivy/.env
 !.env.example
 !**/.env.example
+k8s/secrets/default-connection.txt
+k8s/secrets/*.secret
+!k8s/secrets/*.example
 
 # OS and editors
 .DS_Store

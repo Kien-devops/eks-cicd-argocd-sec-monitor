@@ -40,8 +40,8 @@ docker compose ps
 
 | Tool | Default local URL |
 |---|---|
-| SonarQube | `http://127.0.0.1:9000` |
-| Nexus | `http://127.0.0.1:8081` |
+| SonarQube | `http://<host-ip-address>:9000` |
+| Nexus | `http://<host-ip-address>:8081` |
 
 If these run on a separate EC2 server, expose them with HTTPS through a reverse proxy and restrict inbound security group rules to trusted IPs.
 

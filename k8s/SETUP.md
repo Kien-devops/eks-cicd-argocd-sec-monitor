@@ -29,10 +29,16 @@ The namespace is included in the rendered overlay, so `kubectl apply -k k8s/over
 ## 3. Create Backend Secret
 
 ```bash
-kubectl create namespace "$K8S_NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+cp k8s/secrets/default-connection.txt.example k8s/secrets/default-connection.txt
+vi k8s/secrets/default-connection.txt
+
+kubectl apply -f "k8s/overlays/$K8S_ENV/namespace.yaml"
 kubectl -n "$K8S_NAMESPACE" create secret generic be-db-secret \
-  --from-literal=default-connection='Server=<host>;Database=<db>;User Id=<user>;Password=<password>;TrustServerCertificate=True'
+  --from-file=default-connection=k8s/secrets/default-connection.txt \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
+
+`k8s/secrets/default-connection.txt` is ignored by Git so the real database host and password stay local.
 
 ## 4. Deploy
 

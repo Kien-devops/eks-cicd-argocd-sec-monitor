@@ -174,16 +174,22 @@ Runtime details:
 Create the database secret:
 
 ```bash
-kubectl -n hospital create secret generic be-db-secret \
-  --from-literal=default-connection='Server=<DB_HOST>,1433;Database=hospital;User Id=sa;Password=<DB_PASSWORD>;TrustServerCertificate=True;Encrypt=True' \
+cp k8s/secrets/default-connection.txt.example k8s/secrets/default-connection.txt
+vi k8s/secrets/default-connection.txt
+
+kubectl apply -f k8s/overlays/dev/namespace.yaml
+kubectl -n hospital-dev create secret generic be-db-secret \
+  --from-file=default-connection=k8s/secrets/default-connection.txt \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
+
+`k8s/secrets/default-connection.txt` is ignored by Git. Do not commit the real database host or password.
 
 Restart backend after secret changes:
 
 ```bash
-kubectl -n hospital rollout restart deployment/be-deployment-v1
-kubectl -n hospital rollout status deployment/be-deployment-v1
+kubectl -n hospital-dev rollout restart deployment/be-deployment-v1
+kubectl -n hospital-dev rollout status deployment/be-deployment-v1
 ```
 
 ## Public API Tests
@@ -203,7 +209,7 @@ curl -i https://benhvien.teamdevops.shop/api/Doctor
 Port-forward the service:
 
 ```bash
-kubectl -n hospital port-forward svc/be-service-v1 8080:80
+kubectl -n hospital-dev port-forward svc/be-service-v1 8080:80
 ```
 
 Then check backend-only endpoints:
@@ -216,19 +222,19 @@ curl -i http://localhost:8080/swagger/v1/swagger.json
 Inspect logs:
 
 ```bash
-kubectl -n hospital logs deployment/be-deployment-v1 -c be-v1 --tail=100
+kubectl -n hospital-dev logs deployment/be-deployment-v1 -c be-v1 --tail=100
 ```
 
 Inspect environment injection:
 
 ```bash
-kubectl -n hospital get deploy be-deployment-v1 -o yaml | grep -A8 "ConnectionStrings__DefaultConnection"
+kubectl -n hospital-dev get deploy be-deployment-v1 -o yaml | grep -A8 "ConnectionStrings__DefaultConnection"
 ```
 
 Check the secret value:
 
 ```bash
-kubectl -n hospital get secret be-db-secret -o jsonpath='{.data.default-connection}' | base64 -d
+kubectl -n hospital-dev get secret be-db-secret -o jsonpath='{.data.default-connection}' | base64 -d
 echo
 ```
 

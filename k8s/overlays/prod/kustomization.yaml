@@ -4,6 +4,7 @@ kind: Kustomization
 namespace: hospital-prod
 
 resources:
+  - namespace.yaml
   - ../../base
 
 replicas:

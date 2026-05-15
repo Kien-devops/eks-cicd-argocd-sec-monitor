@@ -41,7 +41,7 @@ docker compose ps
 Open:
 
 ```text
-http://127.0.0.1:9000
+http://<host-ip-address>:9000
 ```
 
 Default first login:
@@ -169,4 +169,3 @@ Check in the UI:
 - Use one token per CI system.
 - Rotate tokens regularly.
 - Back up PostgreSQL and SonarQube data volumes before upgrades.
-

@@ -346,8 +346,13 @@ hospital_db.sql
 In Kubernetes, the backend connection string is provided through a Secret:
 
 ```bash
-kubectl -n hospital create secret generic be-db-secret \
-  --from-literal=default-connection='Server=<host>;Database=<db>;User Id=<user>;Password=<password>;TrustServerCertificate=True'
+cp k8s/secrets/default-connection.txt.example k8s/secrets/default-connection.txt
+vi k8s/secrets/default-connection.txt
+
+kubectl apply -f k8s/overlays/dev/namespace.yaml
+kubectl -n hospital-dev create secret generic be-db-secret \
+  --from-file=default-connection=k8s/secrets/default-connection.txt \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
 
 ## Security Stack Setup
@@ -364,8 +369,8 @@ Default local endpoints:
 
 | Tool | URL | Purpose |
 |---|---|---|
-| SonarQube | `http://127.0.0.1:9000` | Static analysis and quality gates. |
-| Nexus | `http://127.0.0.1:8081` | Artifact repository and dependency cache. |
+| SonarQube | `http://<host-ip-address>:9000` | Static analysis and quality gates. |
+| Nexus | `http://<host-ip-address>:8081` | Artifact repository and dependency cache. |
 
 Required Nexus repositories:
 
@@ -505,17 +510,25 @@ aws eks update-kubeconfig --region us-east-1 --name hospital-dev-eks
 Create the namespace and backend runtime secret:
 
 ```bash
-kubectl apply -f k8s/base/namespace.yaml
+export K8S_ENV=dev
+export K8S_NAMESPACE=hospital-dev
 
-kubectl -n hospital create secret generic be-db-secret \
-  --from-literal=default-connection='Server=<host>;Database=<db>;User Id=<user>;Password=<password>;TrustServerCertificate=True'
+cp k8s/secrets/default-connection.txt.example k8s/secrets/default-connection.txt
+vi k8s/secrets/default-connection.txt
+
+kubectl apply -f "k8s/overlays/$K8S_ENV/namespace.yaml"
+kubectl -n "$K8S_NAMESPACE" create secret generic be-db-secret \
+  --from-file=default-connection=k8s/secrets/default-connection.txt \
+  --dry-run=client -o yaml | kubectl apply -f -
 ```
+
+`k8s/secrets/default-connection.txt` is ignored by Git, so keep the real database host and password there only.
 
 If the cluster pulls private images from ECR, create an image pull secret:
 
 ```bash
 aws ecr get-login-password --region us-east-1 | \
-kubectl -n hospital create secret docker-registry ecr-registry-secret \
+kubectl -n "$K8S_NAMESPACE" create secret docker-registry ecr-registry-secret \
   --docker-server=606030503959.dkr.ecr.us-east-1.amazonaws.com \
   --docker-username=AWS \
   --docker-password-stdin
@@ -530,8 +543,8 @@ kubectl kustomize k8s/base
 Apply manifests manually if Argo CD is not being used yet:
 
 ```bash
-kubectl apply -k k8s/base
-kubectl -n hospital get deploy,pods,svc
+kubectl apply -k "k8s/overlays/$K8S_ENV"
+kubectl -n "$K8S_NAMESPACE" get deploy,pods,svc
 ```
 
 Apply the application GitOps object:
@@ -585,7 +598,7 @@ Before rerunning the workflow, confirm:
 | `could not read Username for 'https://github.com'` | Bad GitHub username or PAT | Update `GIT_USERNAME` and `GIT_PASSWORD` with a valid PAT. |
 | ECR login fails | EC2 IAM role lacks ECR permissions | Attach ECR push permissions to the EC2 role. |
 | Trivy reports HIGH/CRITICAL findings | Base image or packages contain CVEs | Upgrade the base image or update packages during the Docker build, then rerun the scan. |
-| `be-db-secret` not found | Backend database secret missing | Create `be-db-secret` in the `hospital` namespace. |
+| `be-db-secret` not found | Backend database secret missing | Create `be-db-secret` in the overlay namespace, for example `hospital-dev`. |
 | `ImagePullBackOff` | ECR pull secret or image tag is wrong | Check `ecr-registry-secret`, ECR repository, and image tag in manifests. |
 | Argo CD does not sync | Branch/path mismatch or app unhealthy | Check `argocd/hospital-traefik-app.yaml`, app status, and repo credentials. |
 | Workflow loops repeatedly | Manifest update commit retriggers pipeline | Keep the skip guard for `ci: update image tag`. |
@@ -634,7 +647,7 @@ Source code -> Build -> Security gates -> Nexus artifacts -> EC2 image build
 Final validation commands:
 
 ```bash
-kubectl -n hospital get deploy,pods,svc
+kubectl -n hospital-dev get deploy,pods,svc
 kubectl -n argocd get applications
 aws ecr describe-images --repository-name ecr-fe --region us-east-1
 aws ecr describe-images --repository-name ecr-be --region us-east-1

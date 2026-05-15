@@ -87,8 +87,8 @@ Open only from the server itself by default:
 
 | Service | URL |
 |---|---|
-| SonarQube | `http://127.0.0.1:9000` |
-| Nexus | `http://127.0.0.1:8081` |
+| SonarQube | `http://<host-ip-address>:9000` |
+| Nexus | `http://<host-ip-address>:8081` |
 
 To expose these services to another host, put Nginx, Caddy, Traefik, or an AWS ALB in front of them and enable HTTPS.
 

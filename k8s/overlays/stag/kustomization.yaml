@@ -4,6 +4,7 @@ kind: Kustomization
 namespace: hospital-stag
 
 resources:
+  - namespace.yaml
   - ../../base
 
 replicas:
