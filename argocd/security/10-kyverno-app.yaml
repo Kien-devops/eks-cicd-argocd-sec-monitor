@@ -21,6 +21,9 @@ spec:
         webhooksCleanup:
           enabled: false
 
+        policyReportsCleanup:
+          enabled: false
+
         admissionController:
           replicas: 1
 
