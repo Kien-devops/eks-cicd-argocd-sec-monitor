@@ -15,8 +15,11 @@ spec:
       values: |
         crds:
           install: true
-          cleanup:
+          migration:
             enabled: false
+
+        webhooksCleanup:
+          enabled: false
 
         admissionController:
           replicas: 1
