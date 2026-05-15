@@ -1,7 +1,6 @@
 using Hospital_API.DTOs;
 using Hospital_API.Models;
 using Hospital_API.Interfaces;
-using AutoMapper;
 
 namespace Hospital_API.Services
 {
@@ -9,13 +8,11 @@ namespace Hospital_API.Services
     {
         private readonly IBlogRepository _blogRepository;
         private readonly IImageService _imageService;
-        private readonly IMapper _mapper;
 
-        public BlogService(IBlogRepository blogRepository, IImageService imageService, IMapper mapper)
+        public BlogService(IBlogRepository blogRepository, IImageService imageService)
         {
             _blogRepository = blogRepository;
             _imageService = imageService;
-            _mapper = mapper;
         }
 
         public async Task<IEnumerable<BlogDTO>> GetAllAsync()

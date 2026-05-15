@@ -137,40 +137,7 @@ builder.Services.AddAuthentication(options =>
 
     options.Events = new JwtBearerEvents
     {
-        OnTokenValidated = async context =>
-{
-    var userRepo = context.HttpContext.RequestServices.GetRequiredService<IUserRepository>();
-
-    var userId = context.Principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-    if (string.IsNullOrEmpty(userId) || !int.TryParse(userId, out var id))
-    {
-        context.Fail("Invalid token");
-        return;
-    }
-
-    var user = await userRepo.GetByIdAsync(id);
-    if (user == null)
-    {
-        context.Fail("User not found");
-        return;
-    }
-
-    // Lấy token chuỗi trực tiếp từ header
-    var rawToken = context.HttpContext.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
-
-    if (string.IsNullOrEmpty(rawToken))
-    {
-        context.Fail("Token is missing");
-        return;
-    }
-
-    if (user.Token != rawToken || user.TokenExpired < DateTime.UtcNow)
-    {
-        context.Fail("Token has been revoked or expired");
-        return;
-    }
-}
-
+        OnTokenValidated = ValidateStoredTokenAsync
     };
 });
 
@@ -349,6 +316,36 @@ if (!Directory.Exists(uploadPath))
 // .WithName("GetWeatherForecast");
 
 app.Run();
+
+static async Task ValidateStoredTokenAsync(TokenValidatedContext context)
+{
+    var userId = context.Principal?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+    if (!int.TryParse(userId, out var id))
+    {
+        context.Fail("Invalid token");
+        return;
+    }
+
+    var userRepo = context.HttpContext.RequestServices.GetRequiredService<IUserRepository>();
+    var user = await userRepo.GetByIdAsync(id);
+    if (user == null)
+    {
+        context.Fail("User not found");
+        return;
+    }
+
+    var rawToken = context.HttpContext.Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+    if (string.IsNullOrEmpty(rawToken))
+    {
+        context.Fail("Token is missing");
+        return;
+    }
+
+    if (user.Token != rawToken || user.TokenExpired < DateTime.UtcNow)
+    {
+        context.Fail("Token has been revoked or expired");
+    }
+}
 
 // record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
 // {

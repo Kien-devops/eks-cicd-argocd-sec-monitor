@@ -5,7 +5,6 @@ using Hospital_API.DTOs;
 using Hospital_API.Interfaces;
 using Hospital_API.Models;
 using Microsoft.IdentityModel.Tokens;
-using Microsoft.AspNetCore.Hosting;
 
 namespace Hospital_API.Services
 {
@@ -13,18 +12,14 @@ namespace Hospital_API.Services
     {
         private readonly IAuthRepository _authRepository;
         private readonly IRoleRepository _roleRepository;
-        private readonly IWebHostEnvironment _env;
-        private readonly IEmailService _emailService;
 
         private readonly IConfiguration _configuration;
 
-        public AuthService(IAuthRepository authRepository, IConfiguration configuration, IRoleRepository roleRepository, IWebHostEnvironment env, IEmailService emailService)
+        public AuthService(IAuthRepository authRepository, IConfiguration configuration, IRoleRepository roleRepository)
         {
             _authRepository = authRepository;
             _configuration = configuration;
             _roleRepository = roleRepository;
-            _env = env;
-            _emailService = emailService;
 
         }
 
@@ -105,7 +100,6 @@ namespace Hospital_API.Services
                 EmergencyContact = ""
             };
 
-            var templatePath = Path.Combine(_env.ContentRootPath, "Templates", "RegisterNoti.html");
             // Removed email sending logic
             // var html = await File.ReadAllTextAsync(templatePath);
            
@@ -189,7 +183,6 @@ namespace Hospital_API.Services
             if (!BCrypt.Net.BCrypt.Verify(dto.CurrentPassword, user.PasswordHash))
                 throw new Exception("Current password is incorrect");
 
-            var templatePath = Path.Combine(_env.ContentRootPath, "Templates", "ChangePasswordNoti.html");
             // Removed email sending logic
             // var html = await File.ReadAllTextAsync(templatePath);
            

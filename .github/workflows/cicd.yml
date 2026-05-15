@@ -185,7 +185,8 @@ jobs:
           dotnet sonarscanner begin \
             /k:"eks-cicd-argocd-sec-monitor" \
             /d:sonar.host.url="$SONAR_HOST_URL" \
-            /d:sonar.token="$SONAR_TOKEN"
+            /d:sonar.token="$SONAR_TOKEN" \
+            /d:sonar.exclusions="hospital_FE/public/js/plugins.js"
 
           dotnet build "${{ env.BACKEND_PROJECT }}" --configuration Release --no-restore
 

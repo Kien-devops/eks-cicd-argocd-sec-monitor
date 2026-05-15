@@ -30,32 +30,32 @@ namespace Hospital_API.Services
             return MapToDTO(medService);
         }
         // Create a new medical service
-        public async Task<MedicalServiceDTO> CreateMedService(MedicalServiceDTO medServicedb)
+        public async Task<MedicalServiceDTO> CreateMedService(MedicalServiceDTO medService)
         {
-            var medService = new MedicalServiceDb
+            var medServiceDb = new MedicalServiceDb
             {
-                Name = medServicedb.Name,
-                Price = medServicedb.Price,
+                Name = medService.Name,
+                Price = medService.Price,
 
-                Type = medServicedb.Type,
-                Description = medServicedb.Description
+                Type = medService.Type,
+                Description = medService.Description
             };
-            var createdMedService = await _medServiceRepo.CreateMedService(medService);
+            var createdMedService = await _medServiceRepo.CreateMedService(medServiceDb);
             return MapToDTO(createdMedService);
         }
         // Update an existing medical service
-        public async Task<MedicalServiceDTO> UpdateMedService(MedicalServiceDTO medServicedb)
+        public async Task<MedicalServiceDTO> UpdateMedService(MedicalServiceDTO medService)
         {
-            var medService = new MedicalServiceDb
+            var medServiceDb = new MedicalServiceDb
             {
-                Id = medServicedb.Id,
-                Name = medServicedb.Name,
+                Id = medService.Id,
+                Name = medService.Name,
 
-                Type = medServicedb.Type,
-                Price = medServicedb.Price,
-                Description = medServicedb.Description
+                Type = medService.Type,
+                Price = medService.Price,
+                Description = medService.Description
             };
-            var updatedMedService = await _medServiceRepo.UpdateMedService(medService);
+            var updatedMedService = await _medServiceRepo.UpdateMedService(medServiceDb);
             if (updatedMedService == null)
             {
                 return null;

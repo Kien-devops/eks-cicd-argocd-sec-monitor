@@ -27,19 +27,19 @@ namespace Hospital_API.Services
             return new RoleDTO {Id = role.Id, Name = role.Name, Description = role.Description };
         }
 
-        public async Task AddRoleAsync(RoleDTO dto)
+        public async Task AddRoleAsync(RoleDTO roleDto)
         {
-            var role = new Role { Name = dto.Name, Description = dto.Description };
+            var role = new Role { Name = roleDto.Name, Description = roleDto.Description };
             await _repo.AddAsync(role);
         }
 
-        public async Task UpdateRoleAsync(int id, RoleDTO dto)
+        public async Task UpdateRoleAsync(int id, RoleDTO roleDto)
         {
             var role = await _repo.GetByIdAsync(id);
             if (role == null) return;
 
-            role.Name = dto.Name;
-            role.Description = dto.Description;
+            role.Name = roleDto.Name;
+            role.Description = roleDto.Description;
             await _repo.UpdateAsync(role);
         }
 

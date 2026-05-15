@@ -7,12 +7,10 @@ namespace Hospital_API.Services
     public class DoctorService : IDoctorService
     {
         private readonly IDoctorRepository _repo;
-        private readonly IUserRepository _userRepo;
 
-        public DoctorService(IDoctorRepository repo, IUserRepository userRepo)
+        public DoctorService(IDoctorRepository repo)
         {
             _repo = repo;
-            _userRepo = userRepo;
         }
 
         public async Task<IEnumerable<DoctorDTO>> GetAllAsync()

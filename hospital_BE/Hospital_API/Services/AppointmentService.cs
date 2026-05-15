@@ -12,18 +12,14 @@ namespace Hospital_API.Services
     public class AppointmentService : IAppointmentService
     {
         private readonly IAppointmentRepository _appointmentRepo;
-        private readonly IWebHostEnvironment _env;
-        private readonly IEmailService _emailService;
-        private readonly IUserRepository __userRepo;
+        private readonly IUserRepository _userRepo;
         private readonly HospitalDbContext _context;
 
-        public AppointmentService(IAppointmentRepository appointmentRepo, HospitalDbContext context, IWebHostEnvironment env, IUserRepository user, IEmailService emailService)
+        public AppointmentService(IAppointmentRepository appointmentRepo, HospitalDbContext context, IUserRepository user)
         {
             _appointmentRepo = appointmentRepo;
             _context = context;
-            _env = env;
-            __userRepo = user;
-            _emailService = emailService;
+            _userRepo = user;
         }
 
         public async Task<IEnumerable<AppointmentDTO>> GetAllAsync()
@@ -132,7 +128,7 @@ namespace Hospital_API.Services
             var appointmentDto = await GetByIdAsync(appointment.Id);
             if (appointmentDto == null) throw new Exception("Tạo lịch hẹn thất bại.");
 
-            var user = await __userRepo.GetByIdAsync(userId);
+            var user = await _userRepo.GetByIdAsync(userId);
                 if (user == null) throw new Exception("Không tìm thấy người dùng");
 
             // Removed email sending logic
