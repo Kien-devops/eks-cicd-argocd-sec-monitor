@@ -5,6 +5,7 @@ metadata:
   namespace: argocd
 spec:
   project: default
+
   source:
     repoURL: https://falcosecurity.github.io/charts
     chart: falco
@@ -14,13 +15,25 @@ spec:
       values: |
         driver:
           kind: modern_ebpf
+
         falco:
           jsonOutput: true
+
         serviceMonitor:
           create: true
+
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 1Gi
+
   destination:
     server: https://kubernetes.default.svc
     namespace: security
+
   syncPolicy:
     automated:
       prune: true
