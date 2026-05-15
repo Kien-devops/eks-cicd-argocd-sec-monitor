@@ -20,6 +20,8 @@ This repository is a complete learning-oriented DevSecOps platform for a hospita
 
 The goal is not only to run the app, but to understand how a modern CI/CD and security delivery flow is assembled end to end.
 
+![Hospital EKS DevSecOps GitOps Platform overview](./image.png)
+
 ## Table of Contents
 
 - [Learning Objectives](#learning-objectives)
